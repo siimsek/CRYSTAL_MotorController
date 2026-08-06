@@ -198,6 +198,7 @@
 #define OLED_AUTO_DIM_TIMEOUT_MS                    300000U  /* 5dk tus aktivitesi yoksa %5 parlakliga dus */
 #define OLED_CONTRAST_HIGH                          255U     /* %100 parlaklik (Normal mod) */
 #define OLED_CONTRAST_DIM                           13U      /* %5 parlaklik (Dimmer / Burn-in koruma modu) */
+#define FACTORY_RESET_HOLD_MS                       5000U    /* Acilista BOOT+OK 5s basili tutulursa fabrika ayarlarina don */
 
 
 
