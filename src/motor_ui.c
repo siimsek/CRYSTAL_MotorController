@@ -640,6 +640,19 @@ static bool read_current_x100(uint16_t *current_x100)
 
     adc_mv = adc_raw_to_mv(raw);
     sensor_mv = adc_mv_to_acs_sensor_mv(adc_mv);
+
+#if ACS_IDLE_AUTO_ZERO_TRACKING
+#if MOTOR_UI_STAGE >= 4U
+    if (!g_motor_power_permitted) {
+        g_acs_zero_sensor_mv += ACS_IDLE_AUTO_ZERO_ALPHA *
+                                 (sensor_mv - g_acs_zero_sensor_mv);
+    }
+#else
+    g_acs_zero_sensor_mv += ACS_IDLE_AUTO_ZERO_ALPHA *
+                             (sensor_mv - g_acs_zero_sensor_mv);
+#endif
+#endif
+
     current_a = fabsf(sensor_mv - g_acs_zero_sensor_mv) /
                 ACS_SENSITIVITY_MV_PER_A;
 

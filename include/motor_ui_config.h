@@ -256,6 +256,8 @@
 #define ACS_FALLBACK_ZERO_SENSOR_MV                 2675.0f  /* 0A'da PA1 olcum sonucu */
 #define ACS_CURRENT_DEADBAND_X100                   80U      /* 80 = 0.80A (800mA / 0.8A alti olcumler 0A kabul edilir) */
 #define ACS_CURRENT_FILTER_ALPHA                    0.20f
+#define ACS_IDLE_AUTO_ZERO_TRACKING                 1U       /* Motor dururken 0A voltaj kaymasini arka planda kalibre et */
+#define ACS_IDLE_AUTO_ZERO_ALPHA                    0.05f
 
 /* ACS712 baglanti kontrolu: sifir akim cikisi ADC'de orta bantta olmalidir.
  * Kart uzerindeki bolucuye gore fiziksel olcum sonrasi daraltilabilir. */
