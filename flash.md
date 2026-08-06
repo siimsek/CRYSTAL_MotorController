@@ -73,10 +73,8 @@ Tüm parametre değişiklikleri ve varsayılana dönme işlemleri 2 kademeli ona
 - **`OK`:** `EVET` seçiliyse bir sonraki onay adımına geçer / son adımda EEPROM ve RAM'e kaydeder. `HAYIR` seçiliyse Ayarlar menüsüne döner.
 - **`BOOT`:** İşlemi anında iptal eder ve Ayarlar menüsüne döner.
 
-### 3.5. Donanımsal Fabrika Ayarlarına Dönüş Kombinasyonu (Hardware Factory Reset)
-- **Kullanım:** Cihaza güç verildiği esnada (Açılış logosu / Splash ekranında) **`BOOT` + `OK`** butonlarına aynı anda **5 saniye (`FACTORY_RESET_HOLD_MS = 5000U`)** basılı tutulursa:
-  - EEPROM ve RAM'deki tüm kullanıcı ayarları silinip varsayılan fabrika değerlerine (`40.0°C` ve `1500mA`) sıfırlanır.
-  - Sahada ayarları bozulan veya kilitlenen cihazlar menüye girmeden anında ilk günkü ayarlarına döndürülür.
+### 3.5. Hızlı Fabrika Ayarlarına Dönüş Kısayolu (Factory Reset Combo)
+- **`BOOT` + `OK` (10 Saniye Basılı Tutma):** Cihaz hangi ekranda olursa olsun `BOOT` ve `OK` tuşlarına aynı anda 10 saniye boyunca basılı tutulursa tüm sıcaklık ve akım eşik değerleri sıfırlanarak fabrika varsayılanlarına (`40.0°C`, `1500mA`) döndürülür, EEPROM'a otomatik yazılır.
 
 ---
 
@@ -131,9 +129,6 @@ Sistemin sahada 7/24 kesintisiz, parazitsiz ve uzun ömürlü çalışması içi
 4. **Ekranda Değer Titremesi Önleme (Display Hysteresis):**
    - Ekranda gösterilen sıcaklık ve akım değerlerine **±0.2°C (`DISPLAY_TEMP_HYST_X10 = 2U`)** ve **±20mA (`DISPLAY_CURRENT_HYST_X100 = 2U`)** gösterge histerezisi uygulanır.
    - Küçük parazit dalgalanmaları ekrandaki son rakamı titretmez, rakamlar okunabilir ve son derece akıcı görünür. Arka plandaki güvenlik ve röle kesme mantığı ise %100 filtrelenmemiş anlık değerlerle 200 ms hızında çalışmaya devam eder.
-
-5. **Fabrika Ayarlarına Dönüş Tuş Kombinasyonu (`FACTORY_RESET_HOLD_MS = 5000U`):**
-   - Cihaz açılırken BOOT + OK tuşlarına 5 saniye basılı tutulursa EEPROM ve RAM ayarları sıfırlanıp fabrika varsayılanlarına (`40.0°C` ve `1500mA`) çekilir.
 
 ---
 

@@ -146,8 +146,6 @@ static alarm_type_t g_ui_alarm_candidate = ALARM_NONE;
 static uint32_t g_ui_alarm_candidate_tick = 0U;
 static bool g_blink_on = true;
 static bool g_display_dirty = true;
-static uint32_t g_factory_reset_press_tick = 0U;
-static bool g_factory_reset_done = false;
 
 static bool g_motor_run_requested = (MOTOR_RUN_REQUEST_DEFAULT != 0U);
 static bool g_motor_power_permitted = false;
@@ -1847,6 +1845,29 @@ static void buttons_task(uint32_t now)
     }
 #endif
 
+#if MOTOR_UI_USE_BOOT_BUTTON
+    /* BOOT + OK birlikte 10 saniye basili tutulursa Fabrika Ayarlarina Donulur (Factory Reset) */
+    if (g_button_ok.stable_pressed && g_button_boot.stable_pressed) {
+        uint32_t ok_hold = now - g_button_ok.press_start_tick;
+        uint32_t boot_hold = now - g_button_boot.press_start_tick;
+        if ((ok_hold >= FACTORY_RESET_HOLD_MS) && (boot_hold >= FACTORY_RESET_HOLD_MS)) {
+            g_set_temp_x10 = TEMP_DEFAULT_X10;
+            g_set_current_x100 = CURRENT_DEFAULT_X100;
+#if MOTOR_UI_STAGE >= 3U
+            (void)settings_save();
+#endif
+            cancel_edit_and_confirmation();
+            g_menu_index = 0U;
+            g_screen = UI_SCREEN_SETTINGS;
+            g_display_dirty = true;
+            ui_reset_user_activity(now);
+            update_alert_state();
+            g_button_ok.press_start_tick = now;
+            g_button_boot.press_start_tick = now;
+        }
+    }
+#endif
+
     g_button_irq_hint = false;
 }
 
@@ -2174,8 +2195,6 @@ void MotorUI_Init(void)
     g_last_blink_tick = now;
     g_last_user_activity_tick = now;
     g_oled_dimmed = false;
-    g_factory_reset_press_tick = 0U;
-    g_factory_reset_done = false;
 #if MOTOR_UI_STAGE >= 1U
     u8g2_SetContrast(&g_u8g2, OLED_CONTRAST_HIGH);
 #endif
@@ -2189,29 +2208,7 @@ void MotorUI_Task(void)
     uint32_t now = HAL_GetTick();
 
     if (g_screen == UI_SCREEN_SPLASH) {
-#if MOTOR_UI_STAGE >= 2U && MOTOR_UI_USE_BOOT_BUTTON
-        bool boot_pressed = button_pin_pressed(MOTOR_UI_BTN_BOOT_GPIO_Port, MOTOR_UI_BTN_BOOT_Pin);
-        bool ok_pressed = button_pin_pressed(MOTOR_UI_BTN_OK_GPIO_Port, MOTOR_UI_BTN_OK_Pin);
-
-        if (boot_pressed && ok_pressed) {
-            if (g_factory_reset_press_tick == 0U) {
-                g_factory_reset_press_tick = now;
-            } else if (!g_factory_reset_done && ((now - g_factory_reset_press_tick) >= FACTORY_RESET_HOLD_MS)) {
-                g_factory_reset_done = true;
-                g_set_temp_x10 = TEMP_DEFAULT_X10;
-                g_set_current_x100 = CURRENT_DEFAULT_X100;
-#if MOTOR_UI_STAGE >= 3U
-                (void)settings_save();
-#endif
-                g_screen = UI_SCREEN_MAIN;
-                g_display_dirty = true;
-                update_alert_state();
-            }
-        } else {
-            g_factory_reset_press_tick = 0U;
-        }
-#endif
-        if (!g_factory_reset_done && (g_factory_reset_press_tick == 0U) && ((now - g_init_tick) >= UI_SPLASH_MS)) {
+        if ((now - g_init_tick) >= UI_SPLASH_MS) {
             g_screen = UI_SCREEN_MAIN;
             g_display_dirty = true;
             update_alert_state();
