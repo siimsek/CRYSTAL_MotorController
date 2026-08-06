@@ -11,9 +11,9 @@ Bu bellenim, **STM32F030C8T6** mikrodenetleyicisi üzerinde çalışan, endüstr
 ## 📌 İçindekiler
 - [1. Donanım ve Sistem Özellikleri](#1-donanım-ve-sistem-özellikleri)
 - [2. Donanım Pin Eşleme Tablosu](#2-donanım-pin-eşleme-tablosu)
-- [3. Sinyal İşleme ve Bellenim Fonksiyonları](#3-sinyal-işleme-ve-bellenim-fonksiyonları)
-- [4. Güvenlik ve Röle Kontrol Mantığı](#4-güvenlik-ve-röle-kontrol-mantığı)
-- [5. Kullanıcı Arayüzü ve Menü Navigasyonu](#5-kullanıcı-arayüzü-ve-menü-navigasyonu)
+- [3. Saha Kullanım Kılavuzu (Operatör Rehberi)](#3-saha-kullanım-kılavuzu-operatör-rehberi)
+- [4. Sinyal İşleme ve Bellenim Fonksiyonları](#4-sinyal-işleme-ve-bellenim-fonksiyonları)
+- [5. Güvenlik ve Röle Kontrol Mantığı](#5-güvenlik-ve-röle-kontrol-mantığı)
 - [6. Alarm Durumları ve Sinyal Paternleri](#6-alarm-durumları-ve-sinyal-paternleri)
 - [7. Parametre Aralıkları](#7-parametre-aralıkları)
 - [8. Derleme, Yükleme ve Testler](#8-derleme-yükleme-ve-testler)
@@ -54,48 +54,70 @@ Bu bellenim, **STM32F030C8T6** mikrodenetleyicisi üzerinde çalışan, endüstr
 
 ---
 
-## 3. Sinyal İşleme ve Bellenim Fonksiyonları
+## 3. Saha Kullanım Kılavuzu (Operatör Rehberi)
 
-### 3.1. Akım Sensörü Otomatik Sıfırlama (Idle Auto-Zero)
+### 3.1. Cihazın İlk Çalıştırılması ve Başlatma
+1. Cihaza güç verildiğinde **3 saniye** boyunca logolu açılış ekranı (Splash Screen) görüntülenir.
+2. Açılış sonrasında cihaz otomatik olarak **Ana Ekrana** geçer.
+3. İlk 5 saniye boyunca elektrik motorunun demeraj akımına karşı koruma süresi aktif kalır.
+
+### 3.2. Ana Ekran Kullanımı
+- **Ekran Görünümü:** Sol sütunda anlık ölçülen sıcaklık (°C), sağ sütunda anlık ölçülen akım (A) görüntülenir.
+- **Menüye Giriş:** `BOOT` butonuna bir kez basılarak Ayarlar Menüsüne geçilir.
+- **Kaza Önleme Kilit:** Yanlışlıkla basılmaları engellemek amacıyla Ana Ekranda `OK`, `UP` ve `DOWN` tuşları pasiftir.
+
+### 3.3. Eşik Değerlerinin Değiştirilmesi
+1. Ana ekrandayken `BOOT` butonuna basarak `AYARLARI` menüsüne girin.
+2. `UP` ve `DOWN` butonlarını kullanarak `Sicaklik` veya `Akim` seçeneğinin üzerine gelin ve `OK` butonuna basın.
+3. `UP` / `DOWN` butonları ile hedef eşik değerini ayarlayın (Butona basılı tutulduğunda değişim hızı artar).
+4. İstenen değere ulaşıldığında `OK` butonuna basarak onay adımına geçin.
+5. **Çift Onay Adımları:**
+   - 1. Onay: `DEGISIKLIKLERI ONAYLIYOR MUSUNUZ?` -> `UP`/`DOWN` ile `EVET` seçip `OK` butonuna basın.
+   - 2. Onay: `DEGISIKLIKLERDEN EMIN MISINIZ?` -> `UP`/`DOWN` ile `EVET` seçip `OK` butonuna basın.
+6. Yeni ayarlar EEPROM belleğe kaydedilir ve sistem Ayarlar menüsüne döner.
+7. *İptal Etme:* Herhangi bir aşamada `BOOT` butonuna basarak işlemi kaydetmeden iptal edebilirsiniz.
+
+### 3.4. Fabrika Ayarlarına Dönüş
+- **Yöntem 1 (Menü Üzerinden):** `AYARLARI` -> `Fabrika Ayarlari` -> `OK` -> Çift Onay adımlarını uygulayın.
+- **Yöntem 2 (Tuş Kısayolu):** Cihaz hangi ekranda olursa olsun `BOOT` ve `OK` butonlarına aynı anda **10 saniye** boyunca basılı tutun. Cihaz anında varsayılan değerlere (`40.0 °C`, `1500 mA`) sıfırlanır ve belleğe işlenir.
+
+### 3.5. Alarm Durumunda Yapılacaklar
+- Sıcaklık veya akım eşik değeri aşıldığında ekranda ilgili uyarı ikonu yanıp söner, sesli alarm (buzzer) çalar ve motor rölesi derhal kesilir.
+- **Ses Susturma:** Alarm çalarken `OK` butonuna **10 saniye** basılı tutarak sesli uyarıyı susturabilirsiniz.
+- **Sistemi Yeniden Başlatma:** Sıcaklık ve akım değerleri güvenli seviyeye dönse dahi motor otomatik olarak çalışmaz. Arıza nedeni giderildikten sonra uygulamanın veya operatörün yeniden başlatma onayı vermesi gerekir.
+
+### 3.6. Otomatik Ekran Koruyucu (Dimmer)
+- Cihazda 5 dakika boyunca tuşa basılmazsa ekran parlaklığı otomatik olarak `%5` seviyesine düşer.
+- Herhangi bir tuşa basıldığında veya yeni bir alarm durumunda ekran parlaklığı anında `%100` seviyesine döner.
+
+---
+
+## 4. Sinyal İşleme ve Bellenim Fonksiyonları
+
+### 4.1. Akım Sensörü Otomatik Sıfırlama (Idle Auto-Zero)
 Motor dururken (`g_motor_power_permitted == false`) ACS712 sensörünün 0A voltaj referansı arka planda bir Üstel Hareketli Ortalama (EMA) filtresi (`alpha = 0.05f`) ile takip edilir. Ortam ve pano sıcaklığından kaynaklanan 0A voltaj kaymaları (drift) dinamik olarak kompanze edilir. Motor çalıştırıldığında sıfır noktası dondurulur.
 
-### 3.2. Boştaki Akım Bastırma (0.8A Deadband)
+### 4.2. Boştaki Akım Bastırma (0.8A Deadband)
 Motor dururken veya hafif yükte oluşan hat gürültülerinin ölçümü etkilemesini önlemek amacıyla 0.8 A (`800 mA`) altındaki akım okumaları bellenim tarafından `0.0 A` olarak işlenir.
 
-### 3.3. Gösterge Histerezisi (Display Hysteresis)
+### 4.3. Gösterge Histerezisi (Display Hysteresis)
 Ekranda gösterilen sayısal değerlerdeki parazit kaynaklı titreşimleri engellemek amacıyla sıcaklıkta `±0.2°C` (`DISPLAY_TEMP_HYST_X10 = 2U`), akımda ise `±20 mA` (`DISPLAY_CURRENT_HYST_X100 = 2U`) gösterge histerezisi uygulanır. Güvenlik ve alarm kontrol döngüleri ham veri ile 200 ms hızında çalışmaya devam eder.
 
-### 3.4. Ekran Parlaklığı ve Otomatik Karartma (Auto-Dimmer)
+### 4.4. Ekran Parlaklığı ve Otomatik Karartma (Auto-Dimmer)
 Sistemde 5 dakika boyunca tuş aktivitesi gerçekleşmezse ve aktif alarm yoksa OLED kontrastı `%5` seviyesine (`OLED_CONTRAST_DIM = 13U`) düşürülerek ekran yanmaları (burn-in) önlenir. Herhangi bir tuşa basılması veya alarm tetiklenmesi durumunda kontrast anında `%100` seviyesine (`OLED_CONTRAST_HIGH = 255U`) çıkarılır.
 
 ---
 
-## 4. Güvenlik ve Röle Kontrol Mantığı
+## 5. Güvenlik ve Röle Kontrol Mantığı
 
-### 4.1. Röle Titremesi Koruması (Relay Chatter Guard)
+### 5.1. Röle Titremesi Koruması (Relay Chatter Guard)
 Ölçülen değerlerin alarm sınırında dalgalanması sonucu röle kontaklarının yüksek frekansta açılıp kapanmasını önlemek amacıyla, röle durum değiştirdikten sonra yeniden kapanması (güç vermesi) için en az **3 saniye** (`RELAY_CHATTER_GUARD_MS = 3000U`) beklenmesi zorunludur. Tehlike anında rölenin kesilmesi ise **0 ms** gecikmeyle derhal gerçekleşir.
 
-### 4.2. İlk Kalkış Akımı Bastırma (Startup Inrush Suppression)
+### 5.2. İlk Kalkış Akımı Bastırma (Startup Inrush Suppression)
 Elektrik motoru veya pompa ilk çalıştırıldığında çekilen yüksek demeraj (inrush) akımının hatalı alarmlara yol açmaması için sistem açılışını takip eden ilk **5 saniye** (`ALERT_UI_ARM_MS = 5000U`) boyunca alarm tetikleme ve güç kesme mekanizmaları pasif tutulur.
 
-### 4.3. Sensör Arıza Koruması ve Otomatik Kilit (Latch)
+### 5.3. Sensör Arıza Koruması ve Otomatik Kilit (Latch)
 ADC okumalarının tanımlı aralık dışına çıkması (NTC kopması/kısa devresi veya ACS712 hatası) durumunda ekranda `"ERROR"` mesajı görüntülenir, röle gücü derhal kesilir. Sensör değerleri normale dönse dahi motor otomatik olarak başlamaz; tekrar başlatma onayı gereklidir.
-
----
-
-## 5. Kullanıcı Arayüzü ve Menü Navigasyonu
-
-### 5.1. Fiziksel Tuş Kombinasyonları ve Kısayollar
-- **`BOOT` + `OK` (10 Saniye Basılı Tutma):** Tüm parametreleri fabrika varsayılanlarına (`40.0°C`, `1500 mA`) sıfırlar ve EEPROM'a kaydeder.
-- **`OK` (Alarm Anında 10 Saniye Basılı Tutma):** Aktif alarmın sesli uyarısını (buzzer) bir sonraki reset veya alarm durumuna kadar susturur.
-- **`BOOT` (Ana Ekran):** Ayarlar menüsüne giriş yapar.
-- **`BOOT` (Ayar / Onay Ekranı):** Yapılan değişiklikleri kaydetmeden iptal eder ve üst menüye döner.
-- **`UP` / `DOWN` (Ayar Ekranı):** Değer artırma ve azaltma işlevini yürütür. Basılı tutulduğunda değişim katsayısı kademeli olarak artar (`1x` - `50x`).
-
-### 5.2. Çift Onay Protokolü
-Parametre güncellemelerinin hatalı yapılmasını önlemek amacıyla 2 aşamalı doğrulama uygulanır:
-1. `DEGISIKLIKLERI ONAYLIYOR MUSUNUZ?`
-2. `DEGISIKLIKLERDEN EMIN MISINIZ?`
 
 ---
 
