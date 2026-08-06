@@ -261,6 +261,8 @@
 #define ACS_CURRENT_FILTER_ALPHA                    0.20f
 #define ACS_IDLE_AUTO_ZERO_TRACKING                 1U       /* Motor dururken 0A voltaj kaymasini arka planda kalibre et */
 #define ACS_IDLE_AUTO_ZERO_ALPHA                    0.05f
+#define DISPLAY_TEMP_HYST_X10                       2U       /* 2 = ±0.2°C gosterge titreme onleme histerezisi */
+#define DISPLAY_CURRENT_HYST_X100                   2U       /* 2 = ±0.02A (20mA) gosterge titreme onleme histerezisi */
 
 /* ACS712 baglanti kontrolu: sifir akim cikisi ADC'de orta bantta olmalidir.
  * Kart uzerindeki bolucuye gore fiziksel olcum sonrasi daraltilabilir. */

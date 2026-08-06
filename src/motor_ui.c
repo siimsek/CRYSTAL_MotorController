@@ -101,6 +101,30 @@ static alarm_type_t g_first_cut_alarm = ALARM_NONE;
 
 static int16_t g_measured_temp_x10 = 276;   /* ~27.6C — matches safe pot default */
 static uint16_t g_measured_current_x100 = 88U; /* ~0.88A — matches safe pot default */
+static int16_t g_display_temp_x10 = 276;
+static uint16_t g_display_current_x100 = 88U;
+static bool g_display_hysteresis_initialized = false;
+
+static void update_display_hysteresis_values(void)
+{
+    int16_t temp_diff = (g_measured_temp_x10 > g_display_temp_x10)
+                      ? (g_measured_temp_x10 - g_display_temp_x10)
+                      : (g_display_temp_x10 - g_measured_temp_x10);
+
+    int32_t current_diff = ((int32_t)g_measured_current_x100 > (int32_t)g_display_current_x100)
+                         ? ((int32_t)g_measured_current_x100 - (int32_t)g_display_current_x100)
+                         : ((int32_t)g_display_current_x100 - (int32_t)g_measured_current_x100);
+
+    if (!g_display_hysteresis_initialized || (temp_diff >= (int16_t)DISPLAY_TEMP_HYST_X10)) {
+        g_display_temp_x10 = g_measured_temp_x10;
+    }
+
+    if (!g_display_hysteresis_initialized || (current_diff >= (int32_t)DISPLAY_CURRENT_HYST_X100) || (g_measured_current_x100 == 0U)) {
+        g_display_current_x100 = g_measured_current_x100;
+    }
+
+    g_display_hysteresis_initialized = true;
+}
 static int16_t g_set_temp_x10 = TEMP_DEFAULT_X10;
 static uint16_t g_set_current_x100 = CURRENT_DEFAULT_X100;
 static int16_t g_edit_temp_x10 = TEMP_DEFAULT_X10;
@@ -723,6 +747,8 @@ static void sensors_update(void)
         }
     }
 
+    update_display_hysteresis_values();
+
     if (temp_ok && current_ok) {
         g_sensor_invalid_count = 0U;
         if (g_sensor_valid_count < SENSOR_VALID_REQUIRED_COUNT) {
@@ -893,11 +919,11 @@ static void draw_main_screen(void)
     char temp_text[12];
     char current_text[12];
 
-    format_temperature_main_for_display(g_measured_temp_x10,
+    format_temperature_main_for_display(g_display_temp_x10,
                                         temp_text,
                                         sizeof(temp_text),
                                         false);
-    format_current_main_for_display(g_measured_current_x100,
+    format_current_main_for_display(g_display_current_x100,
                                     current_text,
                                     sizeof(current_text),
                                     false);
@@ -923,8 +949,8 @@ static void draw_temp_alert_screen(void)
     char temp_text[12];
     char current_text[12];
 
-    format_temperature_for_display(g_measured_temp_x10, temp_text, sizeof(temp_text), false);
-    format_current_for_display(g_measured_current_x100, current_text, sizeof(current_text), false);
+    format_temperature_for_display(g_display_temp_x10, temp_text, sizeof(temp_text), false);
+    format_current_for_display(g_display_current_x100, current_text, sizeof(current_text), false);
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
     u8g2_DrawStr(&g_u8g2, column_centered_x("CRYSTAL", 0U, 127U), 9U, "CRYSTAL");
@@ -954,8 +980,8 @@ static void draw_current_alert_screen(void)
     char temp_text[12];
     char current_text[12];
 
-    format_temperature_for_display(g_measured_temp_x10, temp_text, sizeof(temp_text), false);
-    format_current_for_display(g_measured_current_x100, current_text, sizeof(current_text), false);
+    format_temperature_for_display(g_display_temp_x10, temp_text, sizeof(temp_text), false);
+    format_current_for_display(g_display_current_x100, current_text, sizeof(current_text), false);
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
     u8g2_DrawStr(&g_u8g2, column_centered_x("CRYSTAL", 0U, 127U), 9U, "CRYSTAL");
@@ -985,8 +1011,8 @@ static void draw_both_alert_screen(void)
     char temp_text[12];
     char current_text[12];
 
-    format_temperature_for_display(g_measured_temp_x10, temp_text, sizeof(temp_text), false);
-    format_current_for_display(g_measured_current_x100, current_text, sizeof(current_text), false);
+    format_temperature_for_display(g_display_temp_x10, temp_text, sizeof(temp_text), false);
+    format_current_for_display(g_display_current_x100, current_text, sizeof(current_text), false);
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
     u8g2_DrawStr(&g_u8g2, column_centered_x("CRYSTAL", 0U, 127U), 9U, "CRYSTAL");
@@ -2257,6 +2283,7 @@ void MotorUI_SetSimulatedValues(int16_t temperature_x10,
 
     g_measured_temp_x10 = temperature_x10;
     g_measured_current_x100 = current_x100;
+    update_display_hysteresis_values();
     if (g_screen != UI_SCREEN_SPLASH) {
         update_alert_state();
     }
