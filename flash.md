@@ -130,6 +130,10 @@ Sistemin sahada 7/24 kesintisiz, parazitsiz ve uzun ömürlü çalışması içi
    - Ekranda gösterilen sıcaklık ve akım değerlerine **±0.2°C (`DISPLAY_TEMP_HYST_X10 = 2U`)** ve **±20mA (`DISPLAY_CURRENT_HYST_X100 = 2U`)** gösterge histerezisi uygulanır.
    - Küçük parazit dalgalanmaları ekrandaki son rakamı titretmez, rakamlar okunabilir ve son derece akıcı görünür. Arka plandaki güvenlik ve röle kesme mantığı ise %100 filtrelenmemiş anlık değerlerle 200 ms hızında çalışmaya devam eder.
 
+5. **Röle Titremesi Koruması (Relay Chatter Guard - `RELAY_CHATTER_GUARD_MS = 3000U`):**
+   - Alarm veya sensör arızasında güvenlik gereği röle gücü **DERHAL** kesilir (0 ms gecikme).
+   - Röle durum değiştirdikten sonra kontakların gürültü sebebiyle saniyede defalarca açılıp kapanarak yanmasını önlemek için yeniden AÇILMA (ON) işlemi öncesinde en az **3 saniye** beklenir.
+
 ---
 
 ## 7. Derleme ve Yükleme Talimatları

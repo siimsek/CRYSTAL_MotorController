@@ -159,6 +159,7 @@
  * cagirmadan role motor izni vermez. */
 #define MOTOR_RUN_REQUEST_DEFAULT                   0U
 #define RELAY_SAFE_STARTUP_MS                       1000U
+#define RELAY_CHATTER_GUARD_MS                      3000U    /* 3s: Role titremesi ve kontak yanmasi koruma suresi */
 #define RELAY_REQUIRE_VALID_SENSORS                 1U
 
 /* -------------------------------------------------------------------------

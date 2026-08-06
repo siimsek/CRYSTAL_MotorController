@@ -1425,6 +1425,8 @@ static void discrete_outputs_update(void)
 #endif
 
 #if MOTOR_UI_STAGE >= 4U
+static uint32_t g_last_relay_toggle_tick = 0U;
+
 static void relay_apply_motor_permission(bool permitted)
 {
     /* Bobin ULN2003 üzerinden sürülür; kontak polaritesi MOTOR_POWER_* ile. */
@@ -1433,6 +1435,7 @@ static void relay_apply_motor_permission(bool permitted)
                       permitted ? MOTOR_POWER_ALLOW_RELAY_LEVEL
                                 : MOTOR_POWER_CUT_RELAY_LEVEL);
     g_motor_power_permitted = permitted;
+    g_last_relay_toggle_tick = HAL_GetTick();
 }
 #endif
 
@@ -1461,6 +1464,7 @@ static void safety_update_outputs(uint32_t now)
 #if MOTOR_UI_STAGE >= 4U
     {
         bool startup_finished = ((now - g_init_tick) >= RELAY_SAFE_STARTUP_MS);
+        bool chatter_guard_passed = ((now - g_last_relay_toggle_tick) >= RELAY_CHATTER_GUARD_MS);
         bool sensor_permission = true;
         bool permitted;
 
@@ -1479,7 +1483,11 @@ static void safety_update_outputs(uint32_t now)
                     (g_alarm_type == ALARM_NONE);
 
         if (permitted != g_motor_power_permitted) {
-            relay_apply_motor_permission(permitted);
+            /* Acil durumlarda (alarm/hata/stop) röle DERHAL kesilir (!permitted).
+             * Yeniden acilma (ON) durumunda ise kontaklarin titremesini önlemek icin en az 3s beklenir. */
+            if (!permitted || chatter_guard_passed) {
+                relay_apply_motor_permission(permitted);
+            }
         }
     }
 #else
