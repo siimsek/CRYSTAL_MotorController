@@ -1399,9 +1399,9 @@ static void safety_update_outputs(uint32_t now)
 #endif
 
 
-    /* Alarm varken calisma istegini dustur (tum stage'ler).
-     * Alarm kalinca motor yeniden baslamaz; uygulama tekrar izin vermeli. */
-    if (g_alarm_type != ALARM_NONE) {
+    /* Alarm veya sensur hatasi (ERROR) varken calisma istegini dustur (tum stage'ler).
+     * Alarm kalinca veya sensur hatasi duzelince motor yeniden baslamaz; tekrar izin verilmeli. */
+    if ((g_alarm_type != ALARM_NONE) || g_sensor_fault) {
         g_motor_run_requested = false;
     }
 
@@ -1515,7 +1515,9 @@ static void update_alert_state(void)
         }
     }
 
-    if (g_temp_alarm && g_current_alarm) {
+    if (g_sensor_fault) {
+        g_alarm_type = ALARM_SENSOR_FAULT;
+    } else if (g_temp_alarm && g_current_alarm) {
         g_alarm_type = ALARM_BOTH;
     } else if (g_temp_alarm) {
         g_alarm_type = ALARM_TEMPERATURE;
