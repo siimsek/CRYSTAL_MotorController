@@ -92,26 +92,40 @@ Sistemin sınır değerleri, kod karmaşasına girmeden kolayca düzenlenebilmes
 
 Sistemde 4 farklı alarm durumu tanımlıdır. Alarm durumunda ekran ilgili alarm arayüzüne kilitlenir ve yanıp sönen uyarı ikonu gösterilir.
 
-### 5.1. Buzzer Ses Paternleri
+### 5.1. Buzzer Ses Paternleri ve Alarm Önceliği
 Buzzer non-blocking durum makinesi ile özel ritmik sesler üretir:
-- **Sıcaklık Alarmı (`._._`):** Kısa - Uzun - Kısa - Uzun
-- **Akım Alarmı (`..__..`):** Kısa - Kısa - Uzun - Uzun - Kısa - Kısa
-- **İkisi / Sensör Arızası (`______.......`):** 6 Uzun - 7 Kısa
-
-#### Zamanlama Değerleri:
-- Kısa Ses (`.`): `120 ms`
-- Uzun Ses (`_`): `480 ms`
-- Sembol Arası Boşluk: `120 ms`
-- Patern Tekrar Boşluğu: `850 ms`
+- **Sıcaklık Alarmı (`"C"`):** Kesintisiz, sürekli tek ton ses (`_______________`).
+- **Akım Alarmı (`"____"`):** Kesikli ton (350 ms ses / 350 ms sessizlik).
+- **İlk Alarm Önceliği (`g_first_cut_alarm`):** Birden fazla alarm aynı anda veya sırayla geldiğinde, buzzer ilk gücü kesen ve tetiklenen alarmın ses ritmini çalmaya devam eder. İlk alarm temizlendiğinde 2. aktif alarmın ses ritmine yumuşak geçiş yapılır.
 
 ---
 
 ## 6. Güvenlik ve Röle Mantığı (Fail-Safe)
 
-1. **Güç Kesme Yetkisi:** Herhangi bir sıcaklık/akım alarmı veya sensör kopukluğu/hatasında röle **derhal kesilir** (`PB12 = LOW`).
-2. **Kendiliğinden Başlamama (Latch):** Alarm durumu ortadan kalktığında motor **otomatik olarak çalışmaya başlamaz**. Uygulamanın `MotorUI_SetMotorRunRequest(true)` fonksiyonu ile yeniden onay vermesi şarttır.
-3. **Güvenli Başlatma Gecikmesi:** Cihaz ilk açıldığında sensörlerin oturması için ilk `1000 ms` boyunca motor çalıştırma yetkisi engellenir.
-4. **Sensör Doğrulama:** ADC ölçümleri ham değer aralığı dışına çıkarsa (`NTC` veya `ACS712` kopması) sensör hatası (`ALARM_SENSOR_FAULT`) tetiklenir ve röle emniyete alınır.
+1. **Güç Kesme Yetkisi:** Herhangi bir sıcaklık/akım alarmı veya sensör kopukluğu/hatasında (`ERROR`) röle **derhal kesilir** (`PB12 = LOW`).
+2. **Kendiliğinden Başlamama (Latch):** Alarm durumu ortadan kalktığında veya sensör düzelse bile motor **otomatik olarak çalışmaya başlamaz**. Uygulamanın `MotorUI_SetMotorRunRequest(true)` fonksiyonu ile yeniden onay vermesi şarttır.
+3. **5 Saniyelik Açılış Kalkış Akımı Koruması (`ALERT_UI_ARM_MS = 5000U`):** Cihaz ilk açıldığında pompanın yüksek ilk kalkış (inrush) akımı çekmesi nedeniyle yaşanabilecek hatalı alarm tetiklemelerini önlemek için güç verildikten sonraki ilk 5 saniye boyunca uyarı ve güç kesme devre dışı tutulur.
+4. **Sensör Doğrulama & Hata Koruması:** ADC okumaları ham değer aralığı dışına çıkarsa (`NTC` veya `ACS712` kopması/kısa devresi) ekranda `"ERROR"` gösterilir, sensör hatası (`ALARM_SENSOR_FAULT`) tetiklenir ve röle gücü derhal kesilerek kilitlenir.
+
+---
+
+## 7. Gelişmiş Endüstriyel İnovasyonlar ve Filtreleme
+
+Sistemin sahada 7/24 kesintisiz, parazitsiz ve uzun ömürlü çalışması için entegre edilen özel teknikler:
+
+1. **0.8A Boştaki Akım Sıfırlama Filtresi (`ACS_CURRENT_DEADBAND_X100 = 80U`):**
+   - Motor boştayken veya dururken ACS712 sensöründen gelen ufak gürültülerin ekranda rastgele akım gibi görünmesini engellemek için 0.8 Amper (800 mA) altındaki tüm okumalar otomatik olarak `0.0 A` (`0U`) kabul edilir.
+
+2. **Otomatik Akım Sensör Sıfırlama (Idle Auto-Zero Drift Correction):**
+   - Motor çalışmıyorken (röle açıkken) ACS712 sensörünün 0A voltaj referansı arka planda bir EMA filtresi (`ACS_IDLE_AUTO_ZERO_ALPHA = 0.05f`) ile sürekli izlenir. Sıcaklık ve ortam değişimlerinden kaynaklanan 0A voltaj kaymaları (drift) tamamen yok edilir.
+
+3. **OLED Ekran Koruyucu (Auto-Dimmer / Burn-In Protection):**
+   - 5 dakika boyunca herhangi bir tuşa basılmazsa ve aktif bir alarm yoksa OLED kontrast seviyesi **%5 parlaklığa (`OLED_CONTRAST_DIM = 13U`)** düşürülür.
+   - Herhangi bir tuşa basıldığında veya yeni bir alarm/hata geldiğinde ekran anında **%100 parlaklığa (`OLED_CONTRAST_HIGH = 255U`)** çıkar. Ekran ömrü 5 katına çıkar ve piksel yanması engellenir.
+
+4. **Ekranda Değer Titremesi Önleme (Display Hysteresis):**
+   - Ekranda gösterilen sıcaklık ve akım değerlerine **±0.2°C (`DISPLAY_TEMP_HYST_X10 = 2U`)** ve **±20mA (`DISPLAY_CURRENT_HYST_X100 = 2U`)** gösterge histerezisi uygulanır.
+   - Küçük parazit dalgalanmaları ekrandaki son rakamı titretmez, rakamlar okunabilir ve son derece akıcı görünür. Arka plandaki güvenlik ve röle kesme mantığı ise %100 filtrelenmemiş anlık değerlerle 200 ms hızında çalışmaya devam eder.
 
 ---
 
