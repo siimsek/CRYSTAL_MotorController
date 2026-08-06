@@ -26,6 +26,7 @@ void u8g2_InitDisplay(u8g2_t*);
 void u8g2_SetPowerSave(u8g2_t*,uint8_t);
 void u8g2_SetFontMode(u8g2_t*,uint8_t);
 void u8g2_SetBitmapMode(u8g2_t*,uint8_t);
+void u8g2_SetContrast(u8g2_t*,uint8_t);
 void u8g2_FirstPage(u8g2_t*);
 uint8_t u8g2_NextPage(u8g2_t*);
 void u8g2_ClearBuffer(u8g2_t*);

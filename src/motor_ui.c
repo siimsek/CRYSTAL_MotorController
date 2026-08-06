@@ -133,6 +133,20 @@ static uint32_t g_init_tick = 0U;
 static uint32_t g_last_sensor_tick = 0U;
 static uint32_t g_last_display_tick = 0U;
 static uint32_t g_last_blink_tick = 0U;
+static uint32_t g_last_user_activity_tick = 0U;
+static bool g_oled_dimmed = false;
+
+static void ui_reset_user_activity(uint32_t now)
+{
+    g_last_user_activity_tick = now;
+    if (g_oled_dimmed) {
+        g_oled_dimmed = false;
+#if MOTOR_UI_STAGE >= 1U
+        u8g2_SetContrast(&g_u8g2, OLED_CONTRAST_HIGH);
+        g_display_dirty = true;
+#endif
+    }
+}
 
 #if MOTOR_UI_STAGE >= 2U
 static button_state_t g_button_ok;
@@ -1530,12 +1544,16 @@ static void update_alert_state(void)
 
     if (g_sensor_fault) {
         g_alarm_type = ALARM_SENSOR_FAULT;
+        ui_reset_user_activity(now);
     } else if (g_temp_alarm && g_current_alarm) {
         g_alarm_type = ALARM_BOTH;
+        ui_reset_user_activity(now);
     } else if (g_temp_alarm) {
         g_alarm_type = ALARM_TEMPERATURE;
+        ui_reset_user_activity(now);
     } else if (g_current_alarm) {
         g_alarm_type = ALARM_CURRENT;
+        ui_reset_user_activity(now);
     } else {
         g_alarm_type = ALARM_NONE;
 #if MOTOR_UI_STAGE >= 3U
@@ -1940,6 +1958,8 @@ static void handle_button_action(button_id_t button,
     int32_t delta;
     (void)is_repeat;
 
+    ui_reset_user_activity(HAL_GetTick());
+
     switch (g_screen) {
     case UI_SCREEN_SPLASH:
         /* Ignore all buttons until boot splash finishes. */
@@ -2124,6 +2144,11 @@ void MotorUI_Init(void)
     g_last_sensor_tick = now;
     g_last_display_tick = now;
     g_last_blink_tick = now;
+    g_last_user_activity_tick = now;
+    g_oled_dimmed = false;
+#if MOTOR_UI_STAGE >= 1U
+    u8g2_SetContrast(&g_u8g2, OLED_CONTRAST_HIGH);
+#endif
     /* Do not evaluate alerts during splash; sensors settle in the background. */
     safety_update_outputs(now);
     render_display();
@@ -2186,6 +2211,18 @@ void MotorUI_Task(void)
         }
     }
 #endif
+
+    /* OLED Auto-Dimmer: 5dk boyunca tus basilmazsa ve alarm yoksa parlaklik %5'e dusur.
+     * Alarm geldiginde veya tusa basildiginda aninda %100'e cik. */
+    if (!g_oled_dimmed && (g_alarm_type == ALARM_NONE) && !g_sensor_fault) {
+        if ((now - g_last_user_activity_tick) >= OLED_AUTO_DIM_TIMEOUT_MS) {
+            g_oled_dimmed = true;
+#if MOTOR_UI_STAGE >= 1U
+            u8g2_SetContrast(&g_u8g2, OLED_CONTRAST_DIM);
+            g_display_dirty = true;
+#endif
+        }
+    }
 
     if (g_display_dirty) {
         render_display();
