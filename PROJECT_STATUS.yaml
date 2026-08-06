@@ -1,0 +1,142 @@
+project:
+  name: STM32F030 Motor UI and Pump Safety
+  version: V2_AI_Ready
+  language: C
+  framework: STM32_HAL
+  mcu: STM32F030C8T6
+  ui_source_of_truth: reference/OLED_Projesi.oled.json
+
+memory_constraints:
+  flash_kb: 64
+  sram_kb: 8
+  framebuffer_mode: u8g2_page_buffer
+  u8g2_setup: u8g2_Setup_ssd1306_i2c_128x64_noname_1
+  u8g2_render: FirstPage_NextPage
+
+confirmed_hardware:
+  board_input_voltage_v: 24
+  display:
+    controller: SSD1306
+    resolution: 128x64
+    bus: I2C2
+    scl_pin: PB10
+    sda_pin: PB11
+    assumed_address_7bit: 0x3C
+  eeprom_bus:
+    bus: I2C1
+    scl_pin: PB6
+    sda_pin: PB7
+    model_confirmed: true   # 24C02/24C04 compatible; address 0x50; page 8B; tested OK
+  temperature_sensor:
+    type: NTC
+    nominal_resistance_ohm: 100000
+    gpio: PA2
+    adc_channel: ADC_CHANNEL_2
+  current_sensor:
+    part: ACS712ELCTR-20A-T
+    supply_voltage_v: 5
+    nominal_sensitivity_mv_per_a: 100
+    gpio: PA1
+    adc_channel: ADC_CHANNEL_1
+    divider_ratio_confirmed: false
+  relay:
+    family: Omron G2RL-2
+    coil: DC12
+    trigger_gpio: PB12
+    driver: ULN2003A
+    exact_coil_suffix_known: true
+    contact_no_nc_confirmed: false
+  buttons:
+    names: [OK, DOWN, BOOT, UP]
+    active_level: HIGH
+    pull: external_10k_pulldown
+    gpio_mode: GPIO_PULLDOWN  # Internal pull-down used; pins configured as GPIO_MODE_INPUT in main.c
+    ok: { gpio: PC14, exti: EXTI14, schema_name: exti14_ok }
+    down: { gpio: PA0, exti: EXTI0, schema_name: exti0_down }
+    boot: { gpio: PA6, exti: EXTI6, schema_name: exti6_boot, is_boot0: false, confirmed_hardware: true }
+    up: { gpio: PA7, exti: EXTI7, schema_name: exti7_up }
+  buzzer:
+    gpio: PA12
+    schema_name: BUZZER
+    driver: ULN2003A
+    active_level: HIGH
+  alarm_outputs:
+    over_temp: { gpio: PA8, schema_name: OVER_TEMP, driver: ULN2003A, active_level: HIGH }
+    over_current: { gpio: PB15, schema_name: OVER_CURRENT, driver: ULN2003A, active_level: HIGH }
+  status_led:
+    gpio: PB0
+    schema_name: Status_LED
+    driver: 2N7002
+    active_level: HIGH
+  reserved_pins:
+    - PA13 # SYS_SWDIO
+    - PA14 # SYS_SWCLK
+    - PA9  # USART1_TX
+    - PA10 # USART1_RX
+
+requirements:
+  temperature:
+    min_c: 10.0
+    max_c: 70.0
+    default_c: 40.0
+    fine_step_c: 0.1
+  current:
+    min_ma: 1000
+    max_ma: 5000
+    default_ma: 1500
+    fine_step_ma: 10
+  hold_acceleration_multipliers: [1, 2, 5, 10, 20, 50]
+  main_to_settings_button: BOOT
+  select_button: OK
+  cancel_button: BOOT
+  cancel_target: SETTINGS
+  after_commit_target: SETTINGS
+  alarm_clear_target: MAIN
+  alarm_forces_screen: true
+  alarm_cuts_motor_power: true
+
+buzzer_patterns:
+  temperature: "._._"
+  current: "..__.."
+  both: "______......."
+  short_on_ms: 120
+  long_on_ms: 480
+  symbol_gap_ms: 120
+  pattern_gap_ms: 850
+
+safety_defaults:
+  motor_run_request_default: false
+  alarm_clears_motor_run_request: true
+  motor_does_not_auto_restart_after_alarm: true
+  relay_energized_for_motor_run: true
+  relay_requires_valid_sensors: true
+  sensor_fault_cuts_relay: true
+  default_stage: 4          # Tum stageler donanim uzerinde dogrulandi
+  motor_power_allow_relay_level: RELAY_COIL_ACTIVE_LEVEL
+  motor_power_cut_relay_level: RELAY_COIL_INACTIVE_LEVEL
+  acs_zero: startup_adc_average_not_fixed_2v5
+  oled_i2c: hi2c2
+  eeprom_i2c: hi2c1
+  single_exti_callback: MotorUI_ButtonIRQ
+
+# Cozulmus (onceden bilinmeyen) konular:
+confirmed:
+  - UI: tum ekranlar, menu navigasyonu, buton debounce/hold — CALISIYOR
+  - Relay open/close control via PB12 (ULN2003A) — CALISIYOR
+  - EEPROM read/write at I2C1 0x50, 8B page — CALISIYOR
+  - NTC temperature reading on PA2 — CALISIYOR
+  - ACS712 current reading on PA1 — CALISIYOR
+  - Alarm logic (temp + current) with buzzer — CALISIYOR
+  - Fail-safe relay cut on alarm — CALISIYOR
+
+unknowns:
+  - ACS712 deger dogrulugu: ADC → mA donusumu katsayisi olcumle dogrulanmadi
+  - Relay NO/NC: motor guc yolu NO mu NC mi? (relay.contact_no_nc_confirmed: false)
+  - EEPROM part numarasi: cihaz etiketi okunmadi (fonksiyon calisıyor)
+  - Pump nominal / startup / stall current degerleri (pompa ozellik belgesi gerekli)
+
+next_actions:
+  - [ONCELIKLI] ACS712 kalibrasyonu: 0A'da ADC pin gerilimini ol, ACS_SENSOR_* sabitlerini guncelle
+  - [ONCELIKLI] Relay NO/NC dogrula: motor yuku ile MOTOR_POWER_ALLOW/CUT_RELAY_LEVEL'i test et
+  - Pompa akim profilini cikart (nominal, kalkis, sikisma) ve CURRENT_MAX_X100'u ayarla
+  - EEPROM etiketi oku (model numarasini PROJECT_STATUS'a islet)

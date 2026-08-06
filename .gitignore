@@ -1,0 +1,47 @@
+# PlatformIO & Build Cache
+.pio/
+.pioenvs/
+.piolibdeps/
+.clangd/
+.gcc-flags.json
+
+# Firmware & Compiled Artifacts
+*.elf
+*.bin
+*.hex
+*.map
+*.o
+*.obj
+*.a
+*.lib
+*.d
+*.su
+firmware/
+
+# IDE & Editor Settings
+.vscode/.browse.c_cpp_properties.json
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/ipch/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+.pytest_cache/
+
+# OS Generated Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
