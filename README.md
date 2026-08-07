@@ -84,7 +84,8 @@ Bu bellenim, **STM32F030C8T6** mikrodenetleyicisi üzerinde çalışan, endüstr
 ### 3.5. Alarm Durumunda Yapılacaklar
 - Sıcaklık veya akım eşik değeri aşıldığında ekranda ilgili uyarı ikonu yanıp söner, sesli alarm (buzzer) çalar ve motor rölesi derhal kesilir.
 - **Ses Susturma:** Alarm çalarken `OK` butonuna **10 saniye** basılı tutarak sesli uyarıyı susturabilirsiniz.
-- **Sistemi Yeniden Başlatma:** Sıcaklık ve akım değerleri güvenli seviyeye dönse dahi motor otomatik olarak çalışmaz. Arıza nedeni giderildikten sonra uygulamanın veya operatörün yeniden başlatma onayı vermesi gerekir.
+- **Sistemi Yeniden Başlatma (Akım Arızası):** Akım sebebiyle güç kesildiğinde, cihaz kendini güvenli modda kilitler. Motorun tekrar çalışması için sistemi yeniden başlatmanız (gücü kesip vermeniz) veya sıfırlamanız gerekir.
+- **Sistemi Yeniden Başlatma (Sıcaklık Arızası):** Sıcaklık sebebiyle güç kesildiğinde, ölçülen sıcaklık ayarlanan eşik değerinin **%20 altına düştüğünde** alarm otomatik olarak kalkar ve motor yeniden çalışmaya başlar.
 
 ### 3.6. Otomatik Ekran Koruyucu (Dimmer)
 - Cihazda 5 dakika boyunca tuşa basılmazsa ekran parlaklığı otomatik olarak `%5` seviyesine düşer.

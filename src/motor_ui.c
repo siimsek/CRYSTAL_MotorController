@@ -1455,9 +1455,9 @@ static void safety_update_outputs(uint32_t now)
 #endif
 
 
-    /* Alarm veya sensur hatasi (ERROR) varken calisma istegini dustur (tum stage'ler).
-     * Alarm kalinca veya sensur hatasi duzelince motor yeniden baslamaz; tekrar izin verilmeli. */
-    if ((g_alarm_type != ALARM_NONE) || g_sensor_fault) {
+    /* Sadece akım alarmı veya sensör hatası varken çalışma isteğini düşür.
+     * Sıcaklık alarmında istek düşmez, %20 altına inince motor otomatik devam eder. */
+    if ((g_alarm_type == ALARM_CURRENT) || (g_alarm_type == ALARM_BOTH) || g_sensor_fault) {
         g_motor_run_requested = false;
     }
 
@@ -1532,8 +1532,9 @@ static void update_alert_state(void)
             g_temp_alarm_trip_count = 0U;
         }
     } else {
+        int16_t temp_clear_limit = (int16_t)(((int32_t)g_set_temp_x10 * 80) / 100);
         g_temp_alarm_trip_count = 0U;
-        if (g_measured_temp_x10 <= (g_set_temp_x10 - TEMP_ALERT_HYST_X10)) {
+        if (g_measured_temp_x10 <= temp_clear_limit) {
             if (g_temp_alarm_clear_count < ALARM_CLEAR_REQUIRED_COUNT) ++g_temp_alarm_clear_count;
             if (g_temp_alarm_clear_count >= ALARM_CLEAR_REQUIRED_COUNT) {
                 g_temp_alarm = false;
