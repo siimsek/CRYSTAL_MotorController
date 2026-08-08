@@ -13,15 +13,15 @@
  * Sicaklik x10 formatindadir: 400 = 40.0C
  * Akim x100 formatindadir: 150 = 1.50A = 1500mA
  * ------------------------------------------------------------------------- */
-#define TEMP_MIN_X10                                100      /* 10.0C */
-#define TEMP_MAX_X10                                700      /* 70.0C */
-#define TEMP_DEFAULT_X10                            400      /* 40.0C */
+#define TEMP_MIN_X10                                355      /* 35.5C */
+#define TEMP_MAX_X10                                1065     /* 106.5C */
+#define TEMP_DEFAULT_X10                            710      /* 71.0C */
 #define TEMP_FINE_STEP_X10                          10       /* 1.0C */
 #define TEMP_ALERT_HYST_X10                         10       /* 1.0C */
 
-#define CURRENT_MIN_X100                            10U      /* 100mA (0.10A) */
-#define CURRENT_MAX_X100                            500U     /* 5000mA */
-#define CURRENT_DEFAULT_X100                        150U     /* 1500mA */
+#define CURRENT_MIN_X100                            78U      /* 780mA (0.78A) */
+#define CURRENT_MAX_X100                            233U     /* 2330mA (2.33A) */
+#define CURRENT_DEFAULT_X100                        155U     /* 1550mA */
 #define CURRENT_FINE_STEP_X100                      1U       /* 10mA */
 #define CURRENT_ALERT_HYST_X100                     10U      /* 100mA */
 
