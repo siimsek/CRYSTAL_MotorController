@@ -1250,7 +1250,15 @@ static ui_screen_t alert_screen_for_type(alarm_type_t alarm)
     case ALARM_CURRENT:
         return UI_SCREEN_CURRENT_ALERT;
     case ALARM_BOTH:
+        return UI_SCREEN_BOTH_ALERT;
     case ALARM_SENSOR_FAULT:
+        if (!g_temp_sensor_valid && !g_current_sensor_valid) {
+            return UI_SCREEN_BOTH_ALERT;
+        } else if (!g_temp_sensor_valid) {
+            return UI_SCREEN_TEMP_ALERT;
+        } else if (!g_current_sensor_valid) {
+            return UI_SCREEN_CURRENT_ALERT;
+        }
         return UI_SCREEN_BOTH_ALERT;
     case ALARM_NONE:
     default:
