@@ -193,7 +193,7 @@
 #define DISPLAY_VALUE_UPDATE_MS                     1000U    /* 1s: ekran yenileme (kalibrasyon modu) */
 /* Boot splash then main; alerts stay off until splash + short settle. */
 #define UI_SPLASH_MS                                3000U
-#define ALERT_UI_ARM_MS                             5000U    /* 5s: alarm tetikleme kapali; role 1s sonra kapanabilir */
+#define ALERT_UI_ARM_MS                             5000U    /* 5s: alarm + sensor-fault kesme yok; role ~1s sonra kapanabilir */
 #define ALERT_UI_ENTER_MS                           250U
 #define ALERT_BLINK_MS                              350U
 #define EDIT_VALUE_BLINK_MS                         300U

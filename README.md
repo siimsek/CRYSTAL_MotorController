@@ -61,7 +61,7 @@ Bu bellenim, **STM32F030C8T6** mikrodenetleyicisi üzerinde çalışan, endüstr
 1. Cihaza güç verildiğinde **3 saniye** boyunca logolu açılış ekranı (Splash Screen) görüntülenir.
 2. Açılış sonrasında cihaz otomatik olarak **Ana Ekrana** geçer.
 3. Bu kart motor starter değildir; ana sistemin güç yolunda **ara kesicidir**. NO röle açılışta (ACS sıfır + ~1 s) kapanır ve alarm gelene kadar kapalı kalır. Motoru ana sistemin kendi modları çalıştırır.
-4. İlk **1 saniye** ACS 0A kalibrasyonu ve röle güvenli başlangıçtır (`RELAY_SAFE_STARTUP_MS`). İlk **5 saniye** boyunca alarm tetikleme pasiftir (`ALERT_UI_ARM_MS`); bu pencerede röle kapanmış olabilir.
+4. İlk **1 saniye** ACS 0A kalibrasyonu ve röle güvenli başlangıçtır (`RELAY_SAFE_STARTUP_MS`). İlk **5 saniye** (`ALERT_UI_ARM_MS`) boyunca alarm, NTC/ACS ERROR ve güç kesme yoktur; ~1 s sonra yol kapanır. 5 s sonra ERROR/alarm yolu kesebilir.
 
 ### 3.2. Ana Ekran Kullanımı
 - **Ekran Görünümü:** Sol sütunda anlık ölçülen sıcaklık (°C), sağ sütunda anlık ölçülen akım (A) görüntülenir.
@@ -117,13 +117,13 @@ Sistemde 5 dakika boyunca tuş aktivitesi gerçekleşmezse ve aktif alarm yoksa 
 Ölçülen değerlerin alarm sınırında dalgalanması sonucu röle kontaklarının yüksek frekansta açılıp kapanmasını önlemek amacıyla, röle durum değiştirdikten sonra yeniden kapanması (güç vermesi) için en az **3 saniye** (`RELAY_CHATTER_GUARD_MS = 3000U`) beklenmesi zorunludur. Tehlike anında rölenin kesilmesi ise **0 ms** gecikmeyle derhal gerçekleşir.
 
 ### 5.2. Ara Kesici ve Açılış
-GPIO/init anında röle bobini enerjisizdir (NO kontak açık). ACS 0A kalibrasyonu bu pencerede alınır. `RELAY_SAFE_STARTUP_MS` (1 s) ve geçerli sensörler sonrası bobin enerjilenir, kontak kapanır. Alarm veya sensör hatasında kontak derhal açılır. Akım/sensör alarmı kalkınca yol kendiliğinden kapanmaz; sıcaklık alarmında ölçüm eşiğin %20 altına inince yol yeniden kapanabilir.
+GPIO/init anında röle bobini enerjisizdir (NO kontak açık). ACS 0A kalibrasyonu bu pencerede alınır. `RELAY_SAFE_STARTUP_MS` (1 s) sonrası bobin enerjilenir, kontak kapanır (ilk 5 s sensör geçerliliği aranmaz). `ALERT_UI_ARM_MS` (5 s) dolunca alarm veya sensör hatası kontakı derhal açar. Akım/sensör alarmı kalkınca yol kendiliğinden kapanmaz; sıcaklık alarmında ölçüm eşiğin %20 altına inince yol yeniden kapanabilir.
 
 ### 5.3. İlk Kalkış Akımı Bastırma (Startup Inrush Suppression)
-Sistem açılışını takip eden ilk **5 saniye** (`ALERT_UI_ARM_MS = 5000U`) boyunca alarm tetiklenmez. Röle bu süreden önce (~1 s) kapanabilir; 1–5 s aralığında aşırı akım/sıcaklık henüz yolu kesmez.
+Sistem açılışını takip eden ilk **5 saniye** (`ALERT_UI_ARM_MS = 5000U`) boyunca alarm, NTC/ACS ERROR ve röle kesme yoktur. Röle ~1 s’de kapanabilir. 5 s sonra ERROR veya eşik aşımı yolu keser ve (akım/sensör) isteği latçler.
 
 ### 5.4. Sensör Arıza Koruması ve Otomatik Kilit (Latch)
-ADC okumalarının tanımlı aralık dışına çıkması (NTC kopması/kısa devresi veya ACS712 hatası) durumunda ekranda `"ERROR"` mesajı görüntülenir, röle derhal açılır (yol kesilir). Buzzer bu durumda çalmaz (`SENSOR_FAULT_USES_BOTH_PATTERN = 0`). Sensör normale dönse dahi yol kendiliğinden kapanmaz; güç kes-ver gerekir.
+ADC okumalarının tanımlı aralık dışına çıkması (NTC kopması/kısa devresi veya ACS712 hatası) `ALERT_UI_ARM_MS` sonrası ekranda `"ERROR"` gösterir ve röleyi açar. İlk 5 saniyede ERROR kesmez. Buzzer bu durumda çalmaz (`SENSOR_FAULT_USES_BOTH_PATTERN = 0`). Sensör normale dönse dahi yol kendiliğinden kapanmaz; güç kes-ver gerekir.
 
 ---
 

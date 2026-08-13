@@ -31,7 +31,7 @@ Aşağıdakiler kullanıcı açıkça yeni bir arayüz vermedikçe değiştirile
 ## 2. Güvenlik kuralı
 
 - Alarm aktifken röle motor izni veremez.
-- Sensörler geçerli değilken Stage 4 röle motor izni veremez.
+- `ALERT_UI_ARM_MS` dolmadan (ilk 5 s) alarm ve sensör hatası röleyi kesemez / isteği latçleyemez. Arm sonrası sensörler geçerli değilken Stage 4 röle motor izni veremez.
 - `MotorUI_SetMotorRunRequest(true)` alarm güvenliğini bypass edemez.
 - Akım alarmı / sensör hatasında `g_motor_run_requested` düşürülür; alarm kalkınca yol kendiliğinden kapanmaz. Sıcaklık alarmında istek düşmez; eşik %20 altına inince yol yeniden kapanabilir.
 - GPIO/init anında bobin kesik (`MOTOR_POWER_CUT_RELAY_LEVEL`). ACS sıfır ve `RELAY_SAFE_STARTUP_MS` sonrası varsayılan olarak NO kontak kapanır (`MOTOR_RUN_REQUEST_DEFAULT=1`); bu kart ara kesicidir, motor starter değildir.

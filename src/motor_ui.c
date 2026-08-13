@@ -778,13 +778,27 @@ static void sensors_update(void)
 }
 #endif
 
+static bool alerts_are_armed(uint32_t now)
+{
+    return ((now - g_init_tick) >= ALERT_UI_ARM_MS);
+}
+
+static void format_sensor_fault_text(char *buffer, size_t buffer_size)
+{
+    if (!alerts_are_armed(HAL_GetTick())) {
+        (void)snprintf(buffer, buffer_size, "---");
+        return;
+    }
+    (void)snprintf(buffer, buffer_size, "ERROR");
+}
+
 static void format_temperature_for_display(int16_t value_x10,
                                            char *buffer,
                                            size_t buffer_size,
                                            bool edit_value)
 {
     if (!g_temp_sensor_valid) {
-        (void)snprintf(buffer, buffer_size, "ERROR");
+        format_sensor_fault_text(buffer, buffer_size);
         return;
     }
     format_temperature(value_x10, buffer, buffer_size);
@@ -810,7 +824,7 @@ static void format_temperature_main_for_display(int16_t value_x10,
                                                 bool edit_value)
 {
     if (!g_temp_sensor_valid) {
-        (void)snprintf(buffer, buffer_size, "ERROR");
+        format_sensor_fault_text(buffer, buffer_size);
         return;
     }
     format_temperature(value_x10, buffer, buffer_size);
@@ -823,7 +837,7 @@ static void format_current_for_display(uint16_t value_x100,
                                        bool edit_value)
 {
     if (!g_current_sensor_valid) {
-        (void)snprintf(buffer, buffer_size, "ERROR");
+        format_sensor_fault_text(buffer, buffer_size);
         return;
     }
     format_current(value_x100, buffer, buffer_size);
@@ -838,7 +852,7 @@ static void format_current_main_for_display(uint16_t value_x100,
                                             bool edit_value)
 {
     if (!g_current_sensor_valid) {
-        (void)snprintf(buffer, buffer_size, "ERROR");
+        format_sensor_fault_text(buffer, buffer_size);
         return;
     }
     format_current(value_x100, buffer, buffer_size);
@@ -1468,11 +1482,15 @@ static void safety_update_outputs(uint32_t now)
 #endif
 
 
-    /* Sadece akım alarmı veya sensör hatası varken çalışma isteğini düşür.
-     * Sıcaklık alarmında istek düşmez, %20 altına inince motor otomatik devam eder. */
-    if ((g_alarm_type == ALARM_CURRENT) || (g_alarm_type == ALARM_BOTH) || g_sensor_fault) {
-        g_motor_run_requested = false;
-    }
+    /* Arm sonrasi: yalniz akim alarmi veya sensor hatasi istegi düsürür.
+     * Ilk ALERT_UI_ARM_MS icinde latch yok; aksi halde NTC yokken yol hic kapanmaz.
+     * Sicaklik alarminda istek düsmez, %20 altina inince yol yeniden kapanabilir. */
+    {
+        const bool alerts_armed = alerts_are_armed(now);
+        if (alerts_armed &&
+            ((g_alarm_type == ALARM_CURRENT) || (g_alarm_type == ALARM_BOTH) || g_sensor_fault)) {
+            g_motor_run_requested = false;
+        }
 
 #if MOTOR_UI_STAGE >= 4U
     {
@@ -1481,17 +1499,20 @@ static void safety_update_outputs(uint32_t now)
         bool sensor_permission = true;
         bool permitted;
 
+        if (alerts_armed) {
 #if RELAY_REQUIRE_VALID_SENSORS
-        sensor_permission = g_sensors_valid;
+            sensor_permission = g_sensors_valid;
 #endif
 #if SENSOR_FAULT_CUTS_RELAY
-        if (g_sensor_fault) {
-            sensor_permission = false;
-        }
+            if (g_sensor_fault) {
+                sensor_permission = false;
+            }
 #endif
+        }
 
         /* Ara kesici: istek varsayilan acik. Alarm/sensor yoksa yol kapanir.
-         * Motoru bu kart baslatmaz; yalniz guc yolunu keser veya birakir. */
+         * Motoru bu kart baslatmaz; yalniz guc yolunu keser veya birakir.
+         * Ilk 5s (ALERT_UI_ARM_MS) sensor/ERROR kesmez. */
         permitted = g_motor_run_requested &&
                     startup_finished &&
                     sensor_permission &&
@@ -1509,6 +1530,7 @@ static void safety_update_outputs(uint32_t now)
 #else
     g_motor_power_permitted = false;
 #endif
+    }
 }
 
 static void update_alert_state(void)

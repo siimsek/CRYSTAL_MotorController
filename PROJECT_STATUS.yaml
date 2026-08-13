@@ -119,7 +119,8 @@ safety_defaults:
   temperature_alarm_auto_reclose_at_80_percent: true
   relay_energized_for_motor_run: true
   relay_requires_valid_sensors: true
-  sensor_fault_cuts_relay: true
+  sensor_fault_cuts_relay: true   # yalniz ALERT_UI_ARM_MS (5s) sonrasi
+  alert_ui_arm_ms: 5000            # ilk 5s alarm/ERROR kesmez; role ~1s kapanir
   default_stage: 4          # Tum stageler donanim uzerinde dogrulandi
   motor_power_allow_relay_level: RELAY_COIL_ACTIVE_LEVEL
   motor_power_cut_relay_level: RELAY_COIL_INACTIVE_LEVEL
