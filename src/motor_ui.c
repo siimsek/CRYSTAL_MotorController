@@ -1434,16 +1434,21 @@ static void discrete_outputs_update(void)
 
 #if MOTOR_UI_STAGE >= 4U
 static uint32_t g_last_relay_toggle_tick = 0U;
+static bool g_relay_has_closed = false;
 
 static void relay_apply_motor_permission(bool permitted)
 {
-    /* Bobin ULN2003 üzerinden sürülür; kontak polaritesi MOTOR_POWER_* ile. */
+    /* Bobin ULN2003 üzerinden sürülür; NO kontak polaritesi MOTOR_POWER_* ile.
+     * izinli = kontak kapali (guc yolu), kesik = kontak acik. */
     HAL_GPIO_WritePin(MOTOR_UI_RELAY_GPIO_Port,
                       MOTOR_UI_RELAY_Pin,
                       permitted ? MOTOR_POWER_ALLOW_RELAY_LEVEL
                                 : MOTOR_POWER_CUT_RELAY_LEVEL);
     g_motor_power_permitted = permitted;
     g_last_relay_toggle_tick = HAL_GetTick();
+    if (permitted) {
+        g_relay_has_closed = true;
+    }
 }
 #endif
 
@@ -1485,15 +1490,18 @@ static void safety_update_outputs(uint32_t now)
         }
 #endif
 
+        /* Ara kesici: istek varsayilan acik. Alarm/sensor yoksa yol kapanir.
+         * Motoru bu kart baslatmaz; yalniz guc yolunu keser veya birakir. */
         permitted = g_motor_run_requested &&
                     startup_finished &&
                     sensor_permission &&
                     (g_alarm_type == ALARM_NONE);
 
         if (permitted != g_motor_power_permitted) {
-            /* Acil durumlarda (alarm/hata/stop) röle DERHAL kesilir (!permitted).
-             * Yeniden acilma (ON) durumunda ise kontaklarin titremesini önlemek icin en az 3s beklenir. */
-            if (!permitted || chatter_guard_passed) {
+            /* Alarm/hata/stop: kontak DERHAL acilir (!permitted).
+             * Acilista ilk kapanis: yalniz RELAY_SAFE_STARTUP_MS (chatter yok).
+             * Alarm sonrasi yeniden kapanis: en az RELAY_CHATTER_GUARD_MS. */
+            if (!permitted || chatter_guard_passed || !g_relay_has_closed) {
                 relay_apply_motor_permission(permitted);
             }
         }
@@ -2119,7 +2127,8 @@ static void handle_button_action(button_id_t button,
 static void board_outputs_safe_init(void)
 {
 #if MOTOR_UI_SAFE_GPIO_ON_INIT
-    /* Stage bagimsiz guvenli baslangic: motor kesik, buzzer/alarm off.
+    /* Stage bagimsiz guvenli baslangic: bobin enerjisiz (NO kontak acik),
+     * buzzer/alarm off. ACS sifir bu pencerede alinir; sonra Task yol kapatir.
      * Ana durum makinesini degistirmez; yalniz pin ODR guvenligi. */
     HAL_GPIO_WritePin(MOTOR_UI_BUZZER_GPIO_Port,
                       MOTOR_UI_BUZZER_Pin,
@@ -2162,6 +2171,9 @@ void MotorUI_Init(void)
     g_set_current_x100 = CURRENT_DEFAULT_X100;
     g_motor_run_requested = (MOTOR_RUN_REQUEST_DEFAULT != 0U);
     g_motor_power_permitted = false;
+#if MOTOR_UI_STAGE >= 4U
+    g_relay_has_closed = false;
+#endif
 
     board_outputs_safe_init();
 

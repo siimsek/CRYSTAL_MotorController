@@ -38,14 +38,17 @@ confirmed_hardware:
     nominal_sensitivity_mv_per_a: 100
     gpio: PA1
     adc_channel: ADC_CHANNEL_1
-    divider_ratio_confirmed: false
+    divider_ratio_confirmed: true   # bolucu yok; ACS VIOUT dogrudan PA1; 0A = 2.675V olculdu
+    zero_sensor_mv: 2675.0
+    conversion_accuracy_confirmed: false
   relay:
     family: Omron G2RL-2
     coil: DC12
     trigger_gpio: PB12
     driver: ULN2003A
     exact_coil_suffix_known: true
-    contact_no_nc_confirmed: false
+    contact_no_nc_confirmed: true
+    motor_power_path: NO   # bobin enerjili = kontak kapali = guc yolu izinli; alarmda bobin kesik = yol acik
   buttons:
     names: [OK, DOWN, BOOT, UP]
     active_level: HIGH
@@ -76,15 +79,17 @@ confirmed_hardware:
 
 requirements:
   temperature:
-    min_c: 10.0
-    max_c: 70.0
-    default_c: 40.0
-    fine_step_c: 0.1
+    min_c: 35.5
+    max_c: 106.5
+    default_c: 71.0
+    fine_step_c: 1.0
+    source: motor_ui_config.h TEMP_*_X10
   current:
-    min_ma: 1000
-    max_ma: 5000
-    default_ma: 1500
+    min_ma: 780
+    max_ma: 2330
+    default_ma: 1550
     fine_step_ma: 10
+    source: motor_ui_config.h CURRENT_*_X100
   hold_acceleration_multipliers: [1, 2, 5, 10, 20, 50]
   main_to_settings_button: BOOT
   select_button: OK
@@ -96,18 +101,22 @@ requirements:
   alarm_cuts_motor_power: true
 
 buzzer_patterns:
-  temperature: "._._"
-  current: "..__.."
-  both: "______......."
-  short_on_ms: 120
-  long_on_ms: 480
-  symbol_gap_ms: 120
-  pattern_gap_ms: 850
+  temperature: "C"          # surekli ton
+  current: "____"           # 350ms ses / 350ms bos
+  both: first_cut_alarm     # g_first_cut_alarm paterni
+  sensor_fault: silent      # SENSOR_FAULT_USES_BOTH_PATTERN=0
+  short_on_ms: 350
+  long_on_ms: 350
+  symbol_gap_ms: 350
+  pattern_gap_ms: 350
+  mute_hold_ms: 5000
 
 safety_defaults:
-  motor_run_request_default: false
-  alarm_clears_motor_run_request: true
-  motor_does_not_auto_restart_after_alarm: true
+  motor_run_request_default: true   # ara kesici: acilista yol kapanir, alarmda acilir
+  role: series_cutout               # motor starter degil; ana sistem modlari motoru calistirir
+  alarm_clears_motor_run_request: true   # akim + sensor hatasi; sicaklik istegi dusmez
+  motor_does_not_auto_restart_after_current_or_sensor_alarm: true
+  temperature_alarm_auto_reclose_at_80_percent: true
   relay_energized_for_motor_run: true
   relay_requires_valid_sensors: true
   sensor_fault_cuts_relay: true
@@ -128,15 +137,16 @@ confirmed:
   - ACS712 current reading on PA1 — CALISIYOR
   - Alarm logic (temp + current) with buzzer — CALISIYOR
   - Fail-safe relay cut on alarm — CALISIYOR
+  - Relay NO series-cutout: power-on close, alarm open — KOD GUNCELLENDI
+  - Relay NO teyit: gucte kontak kapanir, alarmda acilir
 
 unknowns:
-  - ACS712 deger dogrulugu: ADC → mA donusumu katsayisi olcumle dogrulanmadi
-  - Relay NO/NC: motor guc yolu NO mu NC mi? (relay.contact_no_nc_confirmed: false)
-  - EEPROM part numarasi: cihaz etiketi okunmadi (fonksiyon calisıyor)
+  - ACS712 deger dogrulugu: ADC → mA mutlak kalibrasyon (yuk ile) olcumle dogrulanmadi
+  - EEPROM parca etiketi: 24C02/24C04 uyumlu 0x50 8B; silkscreen okunmadi
   - Pump nominal / startup / stall current degerleri (pompa ozellik belgesi gerekli)
 
 next_actions:
   - [ONCELIKLI] ACS712 kalibrasyonu: 0A'da ADC pin gerilimini ol, ACS_SENSOR_* sabitlerini guncelle
-  - [ONCELIKLI] Relay NO/NC dogrula: motor yuku ile MOTOR_POWER_ALLOW/CUT_RELAY_LEVEL'i test et
+  - Role acilis kapanisi: guc verince ~1s sonra kontak kapali, alarmda acik — kartta dogrula
   - Pompa akim profilini cikart (nominal, kalkis, sikisma) ve CURRENT_MAX_X100'u ayarla
   - EEPROM etiketi oku (model numarasini PROJECT_STATUS'a islet)

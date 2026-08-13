@@ -46,7 +46,8 @@ Bu bellenim, **STM32F030C8T6** mikrodenetleyicisi üzerinde çalışan, endüstr
 | **BOOT Butonu** | `PA6` | Input (Ext. Pull-Down) | Aktif HIGH, Ayarlar / İptal |
 | **UP Butonu** | `PA7` | Input (Ext. Pull-Down) | Aktif HIGH, Yukarı / Artır |
 | **OK Butonu** | `PC14` | Input (Ext. Pull-Down) | Aktif HIGH, Seç / Onayla |
-| **Röle Çıkışı** | `PB12` | Output (ULN2003A) | HIGH = Motor Güç İzni |
+| **Röle Çıkışı** | `PB12` | Output (ULN2003A) | HIGH = bobin enerjili = NO kontak kapalı (güç yolu) |
+| **SWDIO / SWCLK** | `PA13` / `PA14` | SWD | ST-Link programlama; uygulamada kullanılmaz |
 | **Buzzer Çıkışı** | `PA12` | Output (ULN2003A) | HIGH = Ses Aktif |
 | **Aşırı Sıcaklık** | `PA8` | Output (ULN2003A) | HIGH = Sıcaklık Alarm Çıkışı |
 | **Aşırı Akım** | `PB15` | Output (ULN2003A) | HIGH = Akım Alarm Çıkışı |
@@ -59,7 +60,8 @@ Bu bellenim, **STM32F030C8T6** mikrodenetleyicisi üzerinde çalışan, endüstr
 ### 3.1. Cihazın İlk Çalıştırılması ve Başlatma
 1. Cihaza güç verildiğinde **3 saniye** boyunca logolu açılış ekranı (Splash Screen) görüntülenir.
 2. Açılış sonrasında cihaz otomatik olarak **Ana Ekrana** geçer.
-3. İlk 5 saniye boyunca elektrik motorunun demeraj akımına karşı koruma süresi aktif kalır.
+3. Bu kart motor starter değildir; ana sistemin güç yolunda **ara kesicidir**. NO röle açılışta (ACS sıfır + ~1 s) kapanır ve alarm gelene kadar kapalı kalır. Motoru ana sistemin kendi modları çalıştırır.
+4. İlk **1 saniye** ACS 0A kalibrasyonu ve röle güvenli başlangıçtır (`RELAY_SAFE_STARTUP_MS`). İlk **5 saniye** boyunca alarm tetikleme pasiftir (`ALERT_UI_ARM_MS`); bu pencerede röle kapanmış olabilir.
 
 ### 3.2. Ana Ekran Kullanımı
 - **Ekran Görünümü:** Sol sütunda anlık ölçülen sıcaklık (°C), sağ sütunda anlık ölçülen akım (A) görüntülenir.
@@ -79,11 +81,11 @@ Bu bellenim, **STM32F030C8T6** mikrodenetleyicisi üzerinde çalışan, endüstr
 
 ### 3.4. Fabrika Ayarlarına Dönüş
 - **Yöntem 1 (Menü Üzerinden):** `AYARLARI` -> `Fabrika Ayarlari` -> `OK` -> Çift Onay adımlarını uygulayın.
-- **Yöntem 2 (Tuş Kısayolu):** Cihaz hangi ekranda olursa olsun `BOOT` ve `OK` butonlarına aynı anda **10 saniye** boyunca basılı tutun. Cihaz anında varsayılan değerlere (`40.0 °C`, `1500 mA`) sıfırlanır ve belleğe işlenir.
+- **Yöntem 2 (Tuş Kısayolu):** Cihaz hangi ekranda olursa olsun `BOOT` ve `OK` butonlarına aynı anda **10 saniye** boyunca basılı tutun. Cihaz anında varsayılan değerlere (`71.0 °C`, `1550 mA`) sıfırlanır ve EEPROM’a yazılır.
 
 ### 3.5. Alarm Durumunda Yapılacaklar
 - Sıcaklık veya akım eşik değeri aşıldığında ekranda ilgili uyarı ikonu yanıp söner, sesli alarm (buzzer) çalar ve motor rölesi derhal kesilir.
-- **Ses Susturma:** Alarm çalarken `OK` butonuna **10 saniye** basılı tutarak sesli uyarıyı susturabilirsiniz.
+- **Ses Susturma:** Alarm çalarken `OK` butonuna **5 saniye** basılı tutarak sesli uyarıyı susturabilirsiniz (`ALARM_MUTE_HOLD_MS`). Röle kesik kalır; susturma alarmı iptal etmez.
 - **Sistemi Yeniden Başlatma (Akım Arızası):** Akım sebebiyle güç kesildiğinde, cihaz kendini güvenli modda kilitler. Motorun tekrar çalışması için sistemi yeniden başlatmanız (gücü kesip vermeniz) veya sıfırlamanız gerekir.
 - **Sistemi Yeniden Başlatma (Sıcaklık Arızası):** Sıcaklık sebebiyle güç kesildiğinde, ölçülen sıcaklık ayarlanan eşik değerinin **%20 altına düştüğünde** alarm otomatik olarak kalkar ve motor yeniden çalışmaya başlar.
 
@@ -99,7 +101,7 @@ Bu bellenim, **STM32F030C8T6** mikrodenetleyicisi üzerinde çalışan, endüstr
 Motor dururken (`g_motor_power_permitted == false`) ACS712 sensörünün 0A voltaj referansı arka planda bir Üstel Hareketli Ortalama (EMA) filtresi (`alpha = 0.05f`) ile takip edilir. Ortam ve pano sıcaklığından kaynaklanan 0A voltaj kaymaları (drift) dinamik olarak kompanze edilir. Motor çalıştırıldığında sıfır noktası dondurulur.
 
 ### 4.2. Boştaki Akım Bastırma (0.8A Deadband)
-Motor dururken veya hafif yükte oluşan hat gürültülerinin ölçümü etkilemesini önlemek amacıyla 0.8 A (`800 mA`) altındaki akım okumaları bellenim tarafından `0.0 A` olarak işlenir.
+0.8 A (`ACS_CURRENT_DEADBAND_X100 = 80`) altındaki akım okumaları `0.0 A` olarak işlenir. Ayar tavanı 2.33 A’dır; 0.8 A ölü bant ölçüm gürültüsü içindir, eşik minimumu (780 mA) ile karıştırılmamalıdır.
 
 ### 4.3. Gösterge Histerezisi (Display Hysteresis)
 Ekranda gösterilen sayısal değerlerdeki parazit kaynaklı titreşimleri engellemek amacıyla sıcaklıkta `±0.2°C` (`DISPLAY_TEMP_HYST_X10 = 2U`), akımda ise `±20 mA` (`DISPLAY_CURRENT_HYST_X100 = 2U`) gösterge histerezisi uygulanır. Güvenlik ve alarm kontrol döngüleri ham veri ile 200 ms hızında çalışmaya devam eder.
@@ -114,11 +116,14 @@ Sistemde 5 dakika boyunca tuş aktivitesi gerçekleşmezse ve aktif alarm yoksa 
 ### 5.1. Röle Titremesi Koruması (Relay Chatter Guard)
 Ölçülen değerlerin alarm sınırında dalgalanması sonucu röle kontaklarının yüksek frekansta açılıp kapanmasını önlemek amacıyla, röle durum değiştirdikten sonra yeniden kapanması (güç vermesi) için en az **3 saniye** (`RELAY_CHATTER_GUARD_MS = 3000U`) beklenmesi zorunludur. Tehlike anında rölenin kesilmesi ise **0 ms** gecikmeyle derhal gerçekleşir.
 
-### 5.2. İlk Kalkış Akımı Bastırma (Startup Inrush Suppression)
-Elektrik motoru veya pompa ilk çalıştırıldığında çekilen yüksek demeraj (inrush) akımının hatalı alarmlara yol açmaması için sistem açılışını takip eden ilk **5 saniye** (`ALERT_UI_ARM_MS = 5000U`) boyunca alarm tetikleme ve güç kesme mekanizmaları pasif tutulur.
+### 5.2. Ara Kesici ve Açılış
+GPIO/init anında röle bobini enerjisizdir (NO kontak açık). ACS 0A kalibrasyonu bu pencerede alınır. `RELAY_SAFE_STARTUP_MS` (1 s) ve geçerli sensörler sonrası bobin enerjilenir, kontak kapanır. Alarm veya sensör hatasında kontak derhal açılır. Akım/sensör alarmı kalkınca yol kendiliğinden kapanmaz; sıcaklık alarmında ölçüm eşiğin %20 altına inince yol yeniden kapanabilir.
 
-### 5.3. Sensör Arıza Koruması ve Otomatik Kilit (Latch)
-ADC okumalarının tanımlı aralık dışına çıkması (NTC kopması/kısa devresi veya ACS712 hatası) durumunda ekranda `"ERROR"` mesajı görüntülenir, röle gücü derhal kesilir. Sensör değerleri normale dönse dahi motor otomatik olarak başlamaz; tekrar başlatma onayı gereklidir.
+### 5.3. İlk Kalkış Akımı Bastırma (Startup Inrush Suppression)
+Sistem açılışını takip eden ilk **5 saniye** (`ALERT_UI_ARM_MS = 5000U`) boyunca alarm tetiklenmez. Röle bu süreden önce (~1 s) kapanabilir; 1–5 s aralığında aşırı akım/sıcaklık henüz yolu kesmez.
+
+### 5.4. Sensör Arıza Koruması ve Otomatik Kilit (Latch)
+ADC okumalarının tanımlı aralık dışına çıkması (NTC kopması/kısa devresi veya ACS712 hatası) durumunda ekranda `"ERROR"` mesajı görüntülenir, röle derhal açılır (yol kesilir). Buzzer bu durumda çalmaz (`SENSOR_FAULT_USES_BOTH_PATTERN = 0`). Sensör normale dönse dahi yol kendiliğinden kapanmaz; güç kes-ver gerekir.
 
 ---
 
@@ -126,20 +131,23 @@ ADC okumalarının tanımlı aralık dışına çıkması (NTC kopması/kısa de
 
 | Alarm Tipi | Tetiklenme Şartı | Ekran Durumu | Buzzer Ses Paterni |
 | :--- | :--- | :--- | :--- |
-| **Aşırı Sıcaklık** | Ölçülen ≥ Sıcaklık Eşiği | Derece Sembolü Blink | Sürekli Tek Ton (`"C"`) |
-| **Aşırı Akım** | Ölçülen ≥ Akım Eşiği | Akım Sembolü Blink | Kesikli Ritmik Ton (`"____"`) |
-| **Sensör Arızası** | ADC Ölçümü Sınır Dışı | `"ERROR"` Görünümü | Kesikli Ritmik Ton |
+| **Aşırı Sıcaklık** | Ölçülen ≥ Sıcaklık Eşiği | Derece Sembolü Blink | Sürekli ton (`"C"`) |
+| **Aşırı Akım** | Ölçülen ≥ Akım Eşiği | Akım Sembolü Blink | Kesikli 350 ms (`"____"`) |
+| **İkisi birden** | Sıcaklık + akım | Her iki ikon | İlk kesen alarmın paterni (`g_first_cut_alarm`) |
+| **Sensör Arızası** | ADC ölçümü sınır dışı | `"ERROR"` | Sessiz (röle kesik, her iki alarm GPIO aktif) |
 
-*Not: Birden fazla alarm aynı anda oluştuğunda sesli uyarı ilk tetiklenen alarmın tonunda kilitlenir (`g_first_cut_alarm`).*
+*Not: Alarm tipi değişince patern sıfırlanıp yeni patern ilk sembolden başlar. Semboller: `C` = sürekli, `_` = 350 ms ses, sembol/patern aralığı 350 ms.*
 
 ---
 
 ## 7. Parametre Aralıkları
 
-| Parametre | Birim | Minimum | Maksimum | Varsayılan | Adım | Histerezis |
+Kaynak: `include/motor_ui_config.h`. İç birim: sıcaklık ×10 (°C), akım ×100 (A).
+
+| Parametre | İç birim | Minimum | Maksimum | Varsayılan | Adım | Alarm histerezisi |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Sıcaklık Eşiği** | `0.1 °C` | `10.0 °C` | `70.0 °C` | `40.0 °C` | `1.0 °C` | `1.0 °C` |
-| **Akım Eşiği** | `10 mA` | `1000 mA` | `5000 mA` | `1500 mA` | `10 mA` | `100 mA` |
+| **Sıcaklık eşiği** | `0.1 °C` | `35.5 °C` | `106.5 °C` | `71.0 °C` | `1.0 °C` | `%20` altına inince temizlenir |
+| **Akım eşiği** | `10 mA` | `780 mA` | `2330 mA` | `1550 mA` | `10 mA` | `100 mA` |
 
 ---
 
@@ -150,9 +158,14 @@ ADC okumalarının tanımlı aralık dışına çıkması (NTC kopması/kısa de
 # PlatformIO Derleme
 pio run
 
-# ST-Link V2 Yükleme
+# Takılı programcıya göre otomatik yükleme
+#   Nucleo/onboard ST-Link -> pio upload
+#   Bağımsız ST-Link V2 USB -> OpenOCD / st-flash
 ./flash.sh
+# İki programcı takılıysa: STLINK_SERIAL=<seri> ./flash.sh
 ```
+
+SWD: `PA13` SWDIO, `PA14` SWCLK, GND, 3.3V. NRST opsiyonel. Programcı USB’de görünüyor ama MCU yanıt vermiyorsa bu dört teli kontrol edin.
 
 ### 8.2. Otomatik Doğrulama Betikleri
 ```bash

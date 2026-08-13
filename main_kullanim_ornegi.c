@@ -32,7 +32,8 @@ int main(void)
 
     // USER CODE BEGIN 2
     MotorUI_Init();
-    MotorUI_SetMotorRunRequest(false); // acilista motor istek yok
+    /* Varsayilan: acilista guc yolu kapanir (ara kesici). Alarm kontaklari acar.
+     * Yazilimsal kesme icin MotorUI_SetMotorRunRequest(false) cagirin. */
     // USER CODE END 2
 
     while (1)

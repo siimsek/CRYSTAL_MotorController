@@ -33,8 +33,9 @@ Aşağıdakiler kullanıcı açıkça yeni bir arayüz vermedikçe değiştirile
 - Alarm aktifken röle motor izni veremez.
 - Sensörler geçerli değilken Stage 4 röle motor izni veremez.
 - `MotorUI_SetMotorRunRequest(true)` alarm güvenliğini bypass edemez.
-- Alarm varken `g_motor_run_requested` düşürülür; alarm kalkınca motor kendiliğinden başlamaz.
-- Açılışta motor kesik (`MOTOR_POWER_CUT_RELAY_LEVEL`); NO/NC `MOTOR_POWER_*` ile ayarlanır, hardcode edilmez.
+- Akım alarmı / sensör hatasında `g_motor_run_requested` düşürülür; alarm kalkınca yol kendiliğinden kapanmaz. Sıcaklık alarmında istek düşmez; eşik %20 altına inince yol yeniden kapanabilir.
+- GPIO/init anında bobin kesik (`MOTOR_POWER_CUT_RELAY_LEVEL`). ACS sıfır ve `RELAY_SAFE_STARTUP_MS` sonrası varsayılan olarak NO kontak kapanır (`MOTOR_RUN_REQUEST_DEFAULT=1`); bu kart ara kesicidir, motor starter değildir.
+- NO/NC `MOTOR_POWER_*` ile ayarlanır, hardcode edilmez.
 - Röle çıkışını test amacıyla sürekli aktif yapan geçici kod commit edilmez.
 - `MOTOR_UI_STAGE` kendiliğinden 4 yapılmaz.
 - Motor ve röle pinleri tahmin edilmez.
@@ -72,40 +73,40 @@ EXTI callback yalnız `MotorUI_ButtonIRQ()` çağırır. Debounce ve hold işlem
 
 ## 6. Ayar aralıkları
 
-- Sıcaklık: 10.0C–70.0C, varsayılan 40.0C.
-- Akım: 1000mA–5000mA, varsayılan 1500mA.
-- Tek basış sıcaklık adımı 0.1C.
-- Tek basış akım adımı 10mA.
+Kaynak `motor_ui_config.h` (saha değerleri; bu aralıkları “eski varsayılana” geri çekmeyin):
+
+- Sıcaklık: 35.5C–106.5C, varsayılan 71.0C.
+- Akım: 780mA–2330mA, varsayılan 1550mA.
+- Tek basış sıcaklık adımı 1.0C (`TEMP_FINE_STEP_X10 = 10`).
+- Tek basış akım adımı 10mA (`CURRENT_FINE_STEP_X100 = 1`).
 - Hold katsayıları 1-2-5-10-20-50.
 
 ## 7. Buton davranışı
 
 - Ana ekran + BOOT -> Ayarlar.
 - Ana ekran + OK -> işlem yok.
-- Ayarlar + OK -> seç.
+- Ayarlar + OK -> seç (Sicaklik/Akim: set + düzenleme açık).
 - Ayarlar + BOOT -> Ana ekran.
-- Set ekranı + ilk OK -> düzenleme.
-- Set ekranı + ikinci OK -> onay1.
+- Set ekranı + OK -> onay1.
 - Set/onay ekranı + BOOT -> kaydetmeden Ayarlar.
 - Alarm ekranında butonlar alarmı bypass edemez.
 
 ## 8. Alarm paternleri
 
-- Sıcaklık: `._._`
-- Akım: `..__..`
-- Birleşik: `______.......`
-- Alarm tipi değişince patern sıfırlanıp yeni patern ilk sembolden başlamalıdır.
+Kod (`motor_ui.c`): sıcaklık `"C"` (sürekli), akım `"____"` (350 ms kesikli), birleşikte ilk kesen patern (`g_first_cut_alarm`). Sensör hatası sessiz (`SENSOR_FAULT_USES_BOTH_PATTERN = 0`).
+Zamanlar: `BUZZER_* = 350 ms`. Alarm tipi değişince patern sıfırlanıp yeni patern ilk sembolden başlamalıdır.
 
 ## 9. Donanım bilinmeyenleri / ölçüm gerektirenler
 
 Şemadan pin eşlemesi `motor_ui_config.h` ve `PROJECT_STATUS.yaml` içine işlenmiştir.
 Aşağıdakiler ölçülmeden veya parça işaretinden okunmadan kesin kabul edilemez / doldurulamaz:
 
-- ACS bölücü veya filtre oranı (`ACS_SENSOR_MV_PER_ADC_MV_NUM/DEN`)
+- ACS mutlak mA kalibrasyonu (bölücü yok, 0A = 2.675 V ölçüldü; yük ile doğrulanmadı)
 - NTC bağlantı yönü (ADC ölçümü ile; kör ters çevrilmez)
-- Röle NO/NC motor güç yolu (`MOTOR_POWER_ALLOW/CUT_RELAY_LEVEL`)
-- EEPROM modeli, I2C adresi, page size (`EEPROM_ENABLE` kapalı kalsın)
+- EEPROM parça etiketi (işlev açık: `EEPROM_ENABLE=1`, I2C1 `0x50`, page 8B; model numarası okunmadı)
 - Pompa nominal / kalkış / sıkışma akımı
+
+Röle NO teyitlidir: bobin enerjili = yol kapalı, alarmda bobin kesik = yol açık (`MOTOR_POWER_ALLOW/CUT_RELAY_LEVEL`).
 
 Bu bilgiler için `PROJECT_STATUS.yaml` güncellenmelidir.
 

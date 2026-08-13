@@ -34,7 +34,7 @@
  * 4: Stage 3 + pompa guc kesme rolesi
  *
  * Ilk fiziksel testte 1 kullanin. Role ve motor bagliyken dogrudan 4 ile
- * baslamayin. Ayrintili sira README_TR.md ve docs/TEST_PLANI.md icindedir.
+ * baslamayin. Saha degerleri ve flaslama README.md icindedir.
  */
 #define MOTOR_UI_STAGE                              4U
 
@@ -56,7 +56,7 @@
  * MotorUI yalniz MOTOR_UI_* mutlak pinleri kullanir (CubeMX label bagimsiz).
  * Boylece CubeMX'in BUZZER_Pin / RELAYTRIG_Pin gibi makrolariyla cakisma olmaz.
  *
- * PA5 = UI BOOT (gercek BOOT0 degil). Butonlar: harici 10K PD, basili = HIGH.
+ * PA6 = UI BOOT (gercek BOOT0 degil). Butonlar: harici 10K PD, basili = HIGH.
  * PC14 = OK: LSE/RTC kristalleri KAPALI olmalidir (HSI ile calis).
  * SWD PA13/PA14 ve USART1 PA9/PA10 kullanilmaz.
  */
@@ -140,24 +140,25 @@
 
 /*
  * Role bobini: PB12 HIGH -> ULN2003 aktif -> Omron G2RL-2 (DC12) bobin enerjili.
- * Kontak tarafinda motor NO mu NC mi bagli oldugu olcumle dogrulanmalidir.
- * Asagidaki MOTOR_POWER_* seviyeleri olcum sonucuna gore kolayca degistirilir.
+ * Kontak: NO (kullanici teyidi). Bobin enerjili = kontak kapali = guc yolu izinli.
+ * Bobin enerjisiz = kontak acik = guc yolu kesik.
+ * NC bagliysa MOTOR_POWER_ALLOW/CUT makrolarini birbiriyle degistirin.
  */
 #define RELAY_COIL_ACTIVE_LEVEL                     GPIO_PIN_SET
 #define RELAY_COIL_INACTIVE_LEVEL                   GPIO_PIN_RESET
 #define RELAY_DRIVER_ACTIVE_STATE                   RELAY_COIL_ACTIVE_LEVEL
 
-/* Varsayilan: bobin enerjili = motor gucu izinli (tipik NO fail-safe).
- * Motor NC uzerinden besleniyorsa bu iki makroyu birbiriyle degistirin. */
 #define MOTOR_POWER_ALLOW_RELAY_LEVEL               RELAY_COIL_ACTIVE_LEVEL
 #define MOTOR_POWER_CUT_RELAY_LEVEL                 RELAY_COIL_INACTIVE_LEVEL
 
 /* Dokumantasyon / eski ad: bobin enerjiliyken motor izni varsayimi. */
 #define RELAY_ENERGIZED_FOR_MOTOR_RUN               1U
 
-/* Motor kendiliginden baslamasin. Uygulama MotorUI_SetMotorRunRequest(true)
- * cagirmadan role motor izni vermez. */
-#define MOTOR_RUN_REQUEST_DEFAULT                   0U
+/* Ara kesici: bu kart motoru baslatmaz. Acilista (ACS sifir +
+ * RELAY_SAFE_STARTUP_MS) guc yolu kapanir ve alarm/sensor hatasina kadar
+ * kapali kalir. Alarm kontaklari acar. MotorUI_SetMotorRunRequest(false)
+ * yazilimsal kesme icin durur; true alarmi bypass edemez. */
+#define MOTOR_RUN_REQUEST_DEFAULT                   1U
 #define RELAY_SAFE_STARTUP_MS                       1000U
 #define RELAY_CHATTER_GUARD_MS                      3000U    /* 3s: Role titremesi ve kontak yanmasi koruma suresi */
 #define RELAY_REQUIRE_VALID_SENSORS                 1U
@@ -192,7 +193,7 @@
 #define DISPLAY_VALUE_UPDATE_MS                     1000U    /* 1s: ekran yenileme (kalibrasyon modu) */
 /* Boot splash then main; alerts stay off until splash + short settle. */
 #define UI_SPLASH_MS                                3000U
-#define ALERT_UI_ARM_MS                             5000U    /* 5s: Guc verildikten sonra 5s boyunca uyari ve guc kesme kapali */
+#define ALERT_UI_ARM_MS                             5000U    /* 5s: alarm tetikleme kapali; role 1s sonra kapanabilir */
 #define ALERT_UI_ENTER_MS                           250U
 #define ALERT_BLINK_MS                              350U
 #define EDIT_VALUE_BLINK_MS                         300U
@@ -249,8 +250,8 @@
  * OLCUM SONUCU (2026-08-05): Kartta bolucü YOK, ACS712 VIOUT dogrudan PA1'e.
  * 0A'da PA1 = 2.675V (olculdu). Teorik 2.500V'tan +175mV ofset mevcut.
  * sensor_mV = adc_mV * 1 / 1  (bolucu yok, dogrudan)
- * Maks guvenli akim: (3300 - 2675) / 100 = 6.25A (ADC satürasyonu limiti)
- * Pompa max ayar 5A olarak tutuldugu surece ADC guvendedir.
+ * Maks guvenli akim: (3300 - 2675) / 100 = 6.25A (ADC saturasyonu limiti)
+ * Ayar tavanı CURRENT_MAX_X100 = 2.33A; ADC basligi genistir.
  */
 #define ACS_SENSITIVITY_MV_PER_A                    100.0f
 #define ACS_SENSOR_MV_PER_ADC_MV_NUM                1.0f    /* bolucu yok */
@@ -282,10 +283,8 @@
 /* -------------------------------------------------------------------------
  * EEPROM (I2C1: PB6 SCL / PB7 SDA)
  * -------------------------------------------------------------------------
- * Exact EEPROM modeli bilinmedigi icin ilk kurulumda kapali birakilmistir.
- * 24C02 benzeri oldugu dogrulanirsa 1 yapin ve adres/page degerlerini kontrol
- * edin. EEPROM kapaliyken onaylanan ayarlar RAM'de calisir ancak enerji
- * kesilince kaybolur.
+ * 24C02/24C04 uyumlu, I2C1 0x50, 8 byte page — okuma/yazma dogrulandi.
+ * Silkscreen model numarasi henuz okunmadi. Kapaliysa (0) ayarlar yalniz RAM'de.
  */
 #define EEPROM_ENABLE                               1U
 #define EEPROM_I2C_ADDRESS_7BIT                     0x50U

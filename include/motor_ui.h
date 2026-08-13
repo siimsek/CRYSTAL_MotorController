@@ -21,8 +21,8 @@ void MotorUI_ForceRedraw(void);
 void MotorUI_SetSimulatedValues(int16_t temperature_x10,
                                 uint16_t current_x100);
 
-/* Pompanin calisma istegi. Alarm ve sensor fail-safe bu istegi her zaman
- * gecersiz kilabilir. Varsayilan false'tur. */
+/* Guc yolu istegi. Varsayilan aciktir (ara kesici: acilista yol kapanir).
+ * Alarm ve sensor fail-safe bu istegi her zaman gecersiz kilabilir. */
 void MotorUI_SetMotorRunRequest(bool run_requested);
 bool MotorUI_IsMotorRunRequested(void);
 bool MotorUI_IsMotorPowerPermitted(void);
