@@ -26,7 +26,7 @@ Bu bellenim, **STM32F030C8T6** mikrodenetleyicisi üzerinde çalışan, endüstr
 - **Görüntüleme:** SSD1306 0.96" / 1.3" OLED Ekran (128x64 piksel, I2C2).
 - **Kalıcı Bellek:** 24C02 / 24C04 EEPROM (I2C1).
 - **Sıcaklık Ölçümü:** 100k NTC Termistör + 100k Seri Gerilim Bölücü (Beta: 3950, PA2 / ADC_IN2).
-- **Akım Ölçümü:** ACS712ELCTR-20A-T Akım Sensörü (100 mV/A, PA1 / ADC_IN1).
+- **Akım Ölçümü:** ACS712ELCTR-20A-T (100 mV/A referans ölçek, PA1 / ADC_IN1).
 - **Güç Kontrolü:** Omron G2RL-2 Röle Çıkışı (PB12, ULN2003A Sürücü).
 - **Uyarı Sinyalleri:** Piezo Buzzer (PA12), Aşırı Sıcaklık Çıkışı (PA8), Aşırı Akım Çıkışı (PB15), Durum LED'i (PB0).
 
@@ -40,7 +40,7 @@ Bu bellenim, **STM32F030C8T6** mikrodenetleyicisi üzerinde çalışan, endüstr
 | **OLED SDA** | `PB11` | I2C2 AF1 | Ekran Veri Sinyali |
 | **EEPROM SCL** | `PB6` | I2C1 AF1 | EEPROM Saat Sinyali |
 | **EEPROM SDA** | `PB7` | I2C1 AF1 | EEPROM Veri Sinyali |
-| **ACS712 Akım** | `PA1` | ADC_IN1 | Akım Girişi (0.8A Ölü Bantlı) |
+| **ACS712 Akım** | `PA1` | ADC_IN1 | Akım girişi (ölü bant yok) |
 | **NTC Sıcaklık** | `PA2` | ADC_IN2 | Sıcaklık Girişi |
 | **DOWN Butonu** | `PA0` | Input (Ext. Pull-Down) | Aktif HIGH, Aşağı / Azalt |
 | **BOOT Butonu** | `PA6` | Input (Ext. Pull-Down) | Aktif HIGH, Ayarlar / İptal |
@@ -97,14 +97,16 @@ Bu bellenim, **STM32F030C8T6** mikrodenetleyicisi üzerinde çalışan, endüstr
 
 ## 4. Sinyal İşleme ve Bellenim Fonksiyonları
 
-### 4.1. Akım Sensörü Otomatik Sıfırlama (Idle Auto-Zero)
-Motor dururken (`g_motor_power_permitted == false`) ACS712 sensörünün 0A voltaj referansı arka planda bir Üstel Hareketli Ortalama (EMA) filtresi (`alpha = 0.05f`) ile takip edilir. Ortam ve pano sıcaklığından kaynaklanan 0A voltaj kaymaları (drift) dinamik olarak kompanze edilir. Motor çalıştırıldığında sıfır noktası dondurulur.
+### 4.1. Akım Sensörü Başlangıç Doğrulaması
+Başlangıçta ACS yalnız ADC varlık/aralık kontrolünden geçer; bir “zero raw” değeri saklanmaz ve mutlak akım kalibrasyonu varsayılmaz. Tepe-tepe/RMS hesabı 40 ms pencereden yapılır.
 
-### 4.2. Boştaki Akım Bastırma (0.8A Deadband)
-0.8 A (`ACS_CURRENT_DEADBAND_X100 = 80`) altındaki akım okumaları `0.0 A` olarak işlenir. Ayar tavanı 2.33 A’dır; 0.8 A ölü bant ölçüm gürültüsü içindir, eşik minimumu (780 mA) ile karıştırılmamalıdır.
+Ayarlar EEPROM'a iki adet 16 baytlık v3 slotta (`0x00`, `0x10`) saklanır. CRC ve en son yazılan commit baytı sayesinde kayıt sırasında güç kesilirse açılışta önceki geçerli slot kullanılır; yazım Task döngüsünde arka planda ilerler.
+
+### 4.2. Akım Ölçümü (40 ms Tepe-Tepe / Sinüs RMS)
+Her 200 ms sensör çevriminde tamamlanmış son **40 ms** ACS penceresi tüketilir; sonraki pencere NTC okumasından sonra başlar. `MotorUI_Task()` her turda yalnız bir ham ACS örneği alır; minimum örnek sayısı ve varlık aralığı sağlanmazsa sensör hatasıdır. Hesap `Vpp = (max-min) × 3300 / 4095`, `Vrms = Vpp / 2 × 0.70710678`, `I = Vrms / 100 mV/A` şeklindedir. **0.45 A ve altı 0 A** gösterilir; EMA uygulanmaz. Mutlak saha doğruluğu hâlâ pens ampermetreyle doğrulanmalıdır. Ana ekran A gösterir (0.01 A).
 
 ### 4.3. Gösterge Histerezisi (Display Hysteresis)
-Ekranda gösterilen sayısal değerlerdeki parazit kaynaklı titreşimleri engellemek amacıyla sıcaklıkta `±0.2°C` (`DISPLAY_TEMP_HYST_X10 = 2U`), akımda ise `±20 mA` (`DISPLAY_CURRENT_HYST_X100 = 2U`) gösterge histerezisi uygulanır. Güvenlik ve alarm kontrol döngüleri ham veri ile 200 ms hızında çalışmaya devam eder.
+Sıcaklıkta `±0.2°C`, akımda `±20 mA` (`DISPLAY_CURRENT_HYST_X100 = 2U`) gösterge histerezisi vardır. Alarm döngüsü 200 ms’de RMS ile çalışır.
 
 ### 4.4. Ekran Parlaklığı ve Otomatik Karartma (Auto-Dimmer)
 Sistemde 5 dakika boyunca tuş aktivitesi gerçekleşmezse ve aktif alarm yoksa OLED kontrastı `%5` seviyesine (`OLED_CONTRAST_DIM = 13U`) düşürülerek ekran yanmaları (burn-in) önlenir. Herhangi bir tuşa basılması veya alarm tetiklenmesi durumunda kontrast anında `%100` seviyesine (`OLED_CONTRAST_HIGH = 255U`) çıkarılır.
@@ -174,4 +176,13 @@ bash tools/check_all_stages.sh
 
 # OLED Grafik ve Koordinat Kilit Kontrolü
 python3 tools/check_ui_lock.py
+
+# ACS tepe-tepe / sinüs-RMS host testi
+bash tools/test_acs_pp_rms.sh
+
+# Röle interlock, ADC pencere ve ISR flag host testi
+bash tools/test_safety_host.sh
+
+# Tüm yerel host doğrulamaları (tek komut)
+bash tools/verify_host.sh
 ```

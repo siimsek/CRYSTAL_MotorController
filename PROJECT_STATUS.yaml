@@ -27,6 +27,9 @@ confirmed_hardware:
     scl_pin: PB6
     sda_pin: PB7
     model_confirmed: true   # 24C02/24C04 compatible; address 0x50; page 8B; tested OK
+    persistence_format: v3_dual_slot_crc_commit
+    slots: [0x00, 0x10]
+    write_policy: asynchronous_page_write_with_last_commit
   temperature_sensor:
     type: NTC
     nominal_resistance_ohm: 100000
@@ -35,12 +38,15 @@ confirmed_hardware:
   current_sensor:
     part: ACS712ELCTR-20A-T
     supply_voltage_v: 5
-    nominal_sensitivity_mv_per_a: 100
+    nominal_sensitivity_mv_per_a: 100.0  # p-p/sinüs-RMS referans ölçeği
     gpio: PA1
     adc_channel: ADC_CHANNEL_1
     divider_ratio_confirmed: true   # bolucu yok; ACS VIOUT dogrudan PA1; 0A = 2.675V olculdu
     zero_sensor_mv: 2675.0
     conversion_accuracy_confirmed: false
+    zero_policy: startup_presence_validation_only
+    measurement_method: 40ms_nonblocking_peak_to_peak_sine_rms
+    zero_current_cutoff_a: 0.45
   relay:
     family: Omron G2RL-2
     coil: DC12
@@ -124,7 +130,7 @@ safety_defaults:
   default_stage: 4          # Tum stageler donanim uzerinde dogrulandi
   motor_power_allow_relay_level: RELAY_COIL_ACTIVE_LEVEL
   motor_power_cut_relay_level: RELAY_COIL_INACTIVE_LEVEL
-  acs_zero: startup_adc_average_not_fixed_2v5
+  acs_zero: startup_presence_validation_only
   oled_i2c: hi2c2
   eeprom_i2c: hi2c1
   single_exti_callback: MotorUI_ButtonIRQ
@@ -142,12 +148,13 @@ confirmed:
   - Relay NO teyit: gucte kontak kapanir, alarmda acilir
 
 unknowns:
-  - ACS712 deger dogrulugu: ADC → mA mutlak kalibrasyon (yuk ile) olcumle dogrulanmadi
+  - ACS712 mutlak dogruluk: 100mV/A p-p/sinus-RMS referansi pens ampermetreyle baska akimlarda dogrulanmali
   - EEPROM parca etiketi: 24C02/24C04 uyumlu 0x50 8B; silkscreen okunmadi
   - Pump nominal / startup / stall current degerleri (pompa ozellik belgesi gerekli)
 
 next_actions:
-  - [ONCELIKLI] ACS712 kalibrasyonu: 0A'da ADC pin gerilimini ol, ACS_SENSOR_* sabitlerini guncelle
+  - ACS712: 100mV/A p-p/sinus-RMS ile baska yuklerde pens karsilastirmasi
   - Role acilis kapanisi: guc verince ~1s sonra kontak kapali, alarmda acik — kartta dogrula
   - Pompa akim profilini cikart (nominal, kalkis, sikisma) ve CURRENT_MAX_X100'u ayarla
   - EEPROM etiketi oku (model numarasini PROJECT_STATUS'a islet)
+  - EEPROM: ayar kaydinin her sayfasinda ve son commit baytindan once enerjiyi kesip son gecerli ayarin acilista korundugunu kartta dogrula

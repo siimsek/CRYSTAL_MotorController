@@ -222,7 +222,8 @@
  * ------------------------------------------------------------------------- */
 #define ADC_REFERENCE_MV                            3300.0f
 #define ADC_FULL_SCALE                              4095.0f
-#define ADC_AVERAGE_SAMPLES                         8U       /* 32 -> 8: ADC bloklama suresi 640ms -> ~160ms */
+#define ADC_AVERAGE_SAMPLES                         16U
+#define ADC_DUMMY_CONVERSIONS                       2U       /* kanal degisince ilk ornekleri at */
 #define ADC_SAMPLE_TIME                             ADC_SAMPLETIME_239CYCLES_5
 
 /* PA1 = ACS712 (ADC_CHANNEL_1), PA2 = NTC (ADC_CHANNEL_2). */
@@ -253,24 +254,27 @@
  * Maks guvenli akim: (3300 - 2675) / 100 = 6.25A (ADC saturasyonu limiti)
  * Ayar tavanı CURRENT_MAX_X100 = 2.33A; ADC basligi genistir.
  */
+/* ACS712ELCTR-20A-T referans olcegi. Mutlak saha dogrulamasini pens
+ * ampermetreyle yapmadan bu deger kalibrasyon yerine gecmez. */
 #define ACS_SENSITIVITY_MV_PER_A                    100.0f
 #define ACS_SENSOR_MV_PER_ADC_MV_NUM                1.0f    /* bolucu yok */
 #define ACS_SENSOR_MV_PER_ADC_MV_DEN                1.0f    /* bolucu yok */
-#define ACS_AUTO_ZERO_AT_STARTUP                    1U       /* acilista PA1 ornekler, sabit 2.5V yok */
-#define ACS_ZERO_SAMPLE_COUNT                       128U
-/* Acilis kalibrasyonu basarisiz olursa yedek: olculmus 0A voltaji (mV). */
-#define ACS_FALLBACK_ZERO_SENSOR_MV                 2675.0f  /* 0A'da PA1 olcum sonucu */
-#define ACS_CURRENT_DEADBAND_X100                   80U      /* 80 = 0.80A (800mA / 0.8A alti olcumler 0A kabul edilir) */
-#define ACS_CURRENT_FILTER_ALPHA                    0.20f
-#define ACS_IDLE_AUTO_ZERO_TRACKING                 1U       /* Motor dururken 0A voltaj kaymasini arka planda kalibre et */
-#define ACS_IDLE_AUTO_ZERO_ALPHA                    0.05f
-#define DISPLAY_TEMP_HYST_X10                       2U       /* 2 = ±0.2°C gosterge titreme onleme histerezisi */
-#define DISPLAY_CURRENT_HYST_X100                   2U       /* 2 = ±0.02A (20mA) gosterge titreme onleme histerezisi */
+/* Acilista yalniz sensor varlik/aralik kontrolu yapilir. Bu deger mutlak
+ * akim kalibrasyonu veya "zero raw" ofseti olarak kullanilmaz. */
+#define ACS_PRESENCE_SAMPLE_COUNT                   16U
+/* Bloklamayan ACS p-p penceresi: Vpp -> sinüs Vrms -> akim.
+ * Her MotorUI_Task turunda en fazla bir ADC ornegi alinir. */
+#define ACS_PP_WINDOW_MS                            40U
+#define ACS_PP_SAMPLE_MIN                           80U
+#define ACS_SINE_RMS_FACTOR                         0.70710678f
+#define ACS_ZERO_CURRENT_CUTOFF_X100                45U      /* 0.45 A ve alti = 0 A */
+#define DISPLAY_TEMP_HYST_X10                       2U       /* 2 = ±0.2°C */
+#define DISPLAY_CURRENT_HYST_X100                   2U       /* 2 = ±0.02A */
 
 /* ACS712 baglanti kontrolu: sifir akim cikisi ADC'de orta bantta olmalidir.
  * Kart uzerindeki bolucuye gore fiziksel olcum sonrasi daraltilabilir. */
 #define ACS_PRESENT_RAW_MIN                         800U
-#define ACS_PRESENT_RAW_MAX                         3600U
+#define ACS_PRESENT_RAW_MAX                         3900U   /* 2.3A+ basligi; 3600 ~2.25A'da kesiyordu */
 
 /* Sensor gecerliligi ve fail-safe. */
 #define SENSOR_VALID_REQUIRED_COUNT                 1U
@@ -292,5 +296,12 @@
 #define EEPROM_MEMORY_ADDRESS_SIZE                  I2C_MEMADD_SIZE_8BIT
 #define EEPROM_PAGE_SIZE                            8U
 #define EEPROM_WRITE_TIMEOUT_MS                     20U
+/* Iki adet 16-byte kayit: 0x00 ve 0x10. Commit bayti en son yazilir;
+ * guc kesilirse onceki gecerli slot korunur. */
+#define EEPROM_SLOT_SIZE                            16U
+#define EEPROM_SLOT_0_ADDRESS                       0x00U
+#define EEPROM_SLOT_1_ADDRESS                       0x10U
+#define EEPROM_COMMIT_VALUE                         0xA5U
+#define EEPROM_RETRY_DELAY_MS                       100U
 
 #endif

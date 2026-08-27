@@ -89,8 +89,11 @@ typedef enum {
 #define SETTINGS_MAGIC_1       ((uint8_t)'R')
 #define SETTINGS_MAGIC_2       ((uint8_t)'Y')
 #define SETTINGS_MAGIC_3       ((uint8_t)'S')
-#define SETTINGS_VERSION       2U
-#define SETTINGS_RECORD_SIZE   12U
+#define SETTINGS_VERSION_V2    2U
+#define SETTINGS_V2_RECORD_SIZE 12U
+#define SETTINGS_VERSION       3U
+#define SETTINGS_RECORD_SIZE   EEPROM_SLOT_SIZE
+#define SETTINGS_COMMIT_OFFSET (SETTINGS_RECORD_SIZE - 1U)
 
 static u8g2_t g_u8g2;
 static ui_screen_t g_screen = UI_SCREEN_SPLASH;
@@ -119,7 +122,8 @@ static void update_display_hysteresis_values(void)
         g_display_temp_x10 = g_measured_temp_x10;
     }
 
-    if (!g_display_hysteresis_initialized || (current_diff >= (int32_t)DISPLAY_CURRENT_HYST_X100) || (g_measured_current_x100 == 0U)) {
+    if (!g_display_hysteresis_initialized ||
+        (current_diff >= (int32_t)DISPLAY_CURRENT_HYST_X100)) {
         g_display_current_x100 = g_measured_current_x100;
     }
 
@@ -185,8 +189,20 @@ static volatile bool g_button_irq_hint = false;
 #if MOTOR_UI_STAGE >= 3U
 static bool g_sensor_filter_initialized = false;
 static float g_temp_filter_x10 = 250.0f;
-static float g_current_filter_x100 = 0.0f;
-static float g_acs_zero_sensor_mv = 0.0f; /* acs_calibrate_zero() doldurur; sabit 2.5V yok */
+
+typedef struct {
+    uint16_t raw_min;
+    uint16_t raw_max;
+    uint16_t sample_count;
+    uint16_t present_count;
+    uint32_t start_tick;
+    bool active;
+    bool result_ready;
+    bool result_valid;
+    uint16_t result_x100;
+} acs_pp_window_t;
+
+static acs_pp_window_t g_acs_pp_window;
 
 static const char g_pattern_temperature[] = "C";      /* C: Continuous tone (Surekli ses) */
 static const char g_pattern_current[] = "____";       /* Intermittent beeps (Kesikli ses: 350ms acik / 350ms kapali) */
@@ -196,6 +212,32 @@ static buzzer_phase_t g_buzzer_phase = BUZZER_PHASE_IDLE;
 static uint8_t g_buzzer_symbol_index = 0U;
 static uint32_t g_buzzer_deadline = 0U;
 static bool g_alarm_buzzer_muted = false;
+#endif
+
+#if MOTOR_UI_STAGE >= 3U && EEPROM_ENABLE
+typedef enum {
+    EEPROM_SAVE_IDLE = 0,
+    EEPROM_SAVE_INVALIDATE_START,
+    EEPROM_SAVE_INVALIDATE_WAIT,
+    EEPROM_SAVE_PAGE_START,
+    EEPROM_SAVE_PAGE_WAIT,
+    EEPROM_SAVE_COMMIT_START,
+    EEPROM_SAVE_COMMIT_WAIT,
+    EEPROM_SAVE_READY_WAIT,
+    EEPROM_SAVE_RETRY_WAIT
+} eeprom_save_state_t;
+
+static uint8_t g_settings_record[SETTINGS_RECORD_SIZE];
+static uint8_t g_settings_invalid_commit = 0U;
+static uint16_t g_settings_save_address = EEPROM_SLOT_0_ADDRESS;
+static uint8_t g_settings_page_offset = 0U;
+static uint32_t g_settings_sequence = 0U;
+static uint32_t g_settings_retry_tick = 0U;
+static eeprom_save_state_t g_settings_ready_next_state = EEPROM_SAVE_IDLE;
+static bool g_settings_save_pending = false;
+static bool g_settings_i2c_done = false;
+static bool g_settings_i2c_error = false;
+static eeprom_save_state_t g_settings_save_state = EEPROM_SAVE_IDLE;
 #endif
 
 static void update_alert_state(void);
@@ -231,15 +273,15 @@ static const uint8_t currentalert_bits[] = {
     0xc0,0x01,0x00,0xc0,0x00,0x00,0x40,0x00,0x00,0x20,0x00,0x00
 };
 
-/* 9x7 menu arrow bitmap with tip at far right (x=8). */
+/* 17x7 menu arrow bitmap from OLED_Projesi.oled.json. */
 static const uint8_t arrow_bits[] = {
-    0x20, 0x00,
-    0x40, 0x00,
-    0x80, 0x00,
-    0xff, 0x01,
-    0x80, 0x00,
-    0x40, 0x00,
-    0x20, 0x00
+    0x00, 0x20, 0x00,
+    0x00, 0x40, 0x00,
+    0x00, 0x80, 0x00,
+    0xff, 0xff, 0x01,
+    0x00, 0x80, 0x00,
+    0x00, 0x40, 0x00,
+    0x00, 0x20, 0x00
 };
 
 #define ACILIS_BITMAP_X       6U
@@ -421,20 +463,6 @@ static uint16_t crc16_ccitt(const uint8_t *data, uint16_t length)
 }
 
 #if MOTOR_UI_STAGE >= 3U && EEPROM_ENABLE
-static bool eeprom_wait_ready(void)
-{
-    uint32_t start = HAL_GetTick();
-    while ((HAL_GetTick() - start) < EEPROM_WRITE_TIMEOUT_MS) {
-        if (HAL_I2C_IsDeviceReady(&MOTOR_UI_EEPROM_I2C_HANDLE,
-                                  (uint16_t)(EEPROM_I2C_ADDRESS_7BIT << 1),
-                                  1U,
-                                  2U) == HAL_OK) {
-            return true;
-        }
-    }
-    return false;
-}
-
 static bool eeprom_read_bytes(uint16_t address, uint8_t *data, uint16_t length)
 {
     return HAL_I2C_Mem_Read(&MOTOR_UI_EEPROM_I2C_HANDLE,
@@ -446,99 +474,250 @@ static bool eeprom_read_bytes(uint16_t address, uint8_t *data, uint16_t length)
                             100U) == HAL_OK;
 }
 
-static bool eeprom_write_bytes(uint16_t address,
-                               const uint8_t *data,
-                               uint16_t length)
+static bool settings_record_v3_valid(const uint8_t *record,
+                                     uint32_t *sequence,
+                                     int16_t *temp_value,
+                                     uint16_t *current_value)
 {
-    uint16_t remaining = length;
-    uint16_t current_address = address;
-    const uint8_t *current_data = data;
+    uint16_t stored_crc;
 
-    while (remaining > 0U) {
-        uint16_t page_offset = (uint16_t)(current_address % EEPROM_PAGE_SIZE);
-        uint16_t page_space = (uint16_t)(EEPROM_PAGE_SIZE - page_offset);
-        uint16_t chunk = (remaining < page_space) ? remaining : page_space;
-
-        if (HAL_I2C_Mem_Write(&MOTOR_UI_EEPROM_I2C_HANDLE,
-                              (uint16_t)(EEPROM_I2C_ADDRESS_7BIT << 1),
-                              current_address,
-                              EEPROM_MEMORY_ADDRESS_SIZE,
-                              (uint8_t *)current_data,
-                              chunk,
-                              100U) != HAL_OK) {
-            return false;
-        }
-        if (!eeprom_wait_ready()) {
-            return false;
-        }
-
-        current_address = (uint16_t)(current_address + chunk);
-        current_data += chunk;
-        remaining = (uint16_t)(remaining - chunk);
+    if ((record[0] != SETTINGS_MAGIC_0) || (record[1] != SETTINGS_MAGIC_1) ||
+        (record[2] != SETTINGS_MAGIC_2) || (record[3] != SETTINGS_MAGIC_3) ||
+        (record[4] != SETTINGS_VERSION) ||
+        (record[SETTINGS_COMMIT_OFFSET] != EEPROM_COMMIT_VALUE)) {
+        return false;
     }
+    stored_crc = (uint16_t)record[13] | ((uint16_t)record[14] << 8);
+    if (stored_crc != crc16_ccitt(record, 13U)) {
+        return false;
+    }
+    *temp_value = (int16_t)((uint16_t)record[9] | ((uint16_t)record[10] << 8));
+    *current_value = (uint16_t)record[11] | ((uint16_t)record[12] << 8);
+    if ((*temp_value < TEMP_MIN_X10) || (*temp_value > TEMP_MAX_X10) ||
+        (*current_value < CURRENT_MIN_X100) || (*current_value > CURRENT_MAX_X100)) {
+        return false;
+    }
+    *sequence = (uint32_t)record[5] | ((uint32_t)record[6] << 8) |
+                ((uint32_t)record[7] << 16) | ((uint32_t)record[8] << 24);
     return true;
 }
 
-static bool settings_load(void)
+static bool settings_load_v2(void)
 {
-    uint8_t record[SETTINGS_RECORD_SIZE];
+    uint8_t record[SETTINGS_V2_RECORD_SIZE];
     uint16_t stored_crc;
-    uint16_t calculated_crc;
     int16_t temp_value;
     uint16_t current_value;
 
-    if (!eeprom_read_bytes(EEPROM_MEMORY_ADDRESS, record, sizeof(record))) {
+    if (!eeprom_read_bytes(EEPROM_MEMORY_ADDRESS, record, sizeof(record)) ||
+        (record[0] != SETTINGS_MAGIC_0) || (record[1] != SETTINGS_MAGIC_1) ||
+        (record[2] != SETTINGS_MAGIC_2) || (record[3] != SETTINGS_MAGIC_3) ||
+        (record[4] != SETTINGS_VERSION_V2)) {
         return false;
     }
-
-    if ((record[0] != SETTINGS_MAGIC_0) ||
-        (record[1] != SETTINGS_MAGIC_1) ||
-        (record[2] != SETTINGS_MAGIC_2) ||
-        (record[3] != SETTINGS_MAGIC_3) ||
-        (record[4] != SETTINGS_VERSION)) {
-        return false;
-    }
-
     stored_crc = (uint16_t)record[10] | ((uint16_t)record[11] << 8);
-    calculated_crc = crc16_ccitt(record, 10U);
-    if (stored_crc != calculated_crc) {
+    if (stored_crc != crc16_ccitt(record, 10U)) {
         return false;
     }
-
     temp_value = (int16_t)((uint16_t)record[6] | ((uint16_t)record[7] << 8));
     current_value = (uint16_t)record[8] | ((uint16_t)record[9] << 8);
-
     if ((temp_value < TEMP_MIN_X10) || (temp_value > TEMP_MAX_X10) ||
-        (current_value < CURRENT_MIN_X100) ||
-        (current_value > CURRENT_MAX_X100)) {
+        (current_value < CURRENT_MIN_X100) || (current_value > CURRENT_MAX_X100)) {
         return false;
     }
-
     g_set_temp_x10 = temp_value;
     g_set_current_x100 = current_value;
     return true;
 }
 
+static bool settings_load(void)
+{
+    uint8_t slot_0[SETTINGS_RECORD_SIZE];
+    uint8_t slot_1[SETTINGS_RECORD_SIZE];
+    uint32_t sequence_0;
+    uint32_t sequence_1;
+    int16_t temp_0;
+    int16_t temp_1;
+    uint16_t current_0;
+    uint16_t current_1;
+    bool valid_0;
+    bool valid_1;
+
+    valid_0 = eeprom_read_bytes(EEPROM_SLOT_0_ADDRESS, slot_0, sizeof(slot_0)) &&
+              settings_record_v3_valid(slot_0, &sequence_0, &temp_0, &current_0);
+    valid_1 = eeprom_read_bytes(EEPROM_SLOT_1_ADDRESS, slot_1, sizeof(slot_1)) &&
+              settings_record_v3_valid(slot_1, &sequence_1, &temp_1, &current_1);
+    if (valid_0 || valid_1) {
+        if (valid_1 && (!valid_0 || ((int32_t)(sequence_1 - sequence_0) > 0))) {
+            g_set_temp_x10 = temp_1;
+            g_set_current_x100 = current_1;
+            g_settings_sequence = sequence_1;
+            g_settings_save_address = EEPROM_SLOT_0_ADDRESS;
+        } else {
+            g_set_temp_x10 = temp_0;
+            g_set_current_x100 = current_0;
+            g_settings_sequence = sequence_0;
+            g_settings_save_address = EEPROM_SLOT_1_ADDRESS;
+        }
+        return true;
+    }
+    if (settings_load_v2()) {
+        /* Preserve the legacy record until its v3 replacement commits. */
+        g_settings_save_address = EEPROM_SLOT_1_ADDRESS;
+        return true;
+    }
+    return false;
+}
+
 static bool settings_save(void)
 {
-    uint8_t record[SETTINGS_RECORD_SIZE] = {0U};
     uint16_t crc;
 
-    record[0] = SETTINGS_MAGIC_0;
-    record[1] = SETTINGS_MAGIC_1;
-    record[2] = SETTINGS_MAGIC_2;
-    record[3] = SETTINGS_MAGIC_3;
-    record[4] = SETTINGS_VERSION;
-    record[5] = 0U;
-    record[6] = (uint8_t)((uint16_t)g_set_temp_x10 & 0xFFU);
-    record[7] = (uint8_t)(((uint16_t)g_set_temp_x10 >> 8) & 0xFFU);
-    record[8] = (uint8_t)(g_set_current_x100 & 0xFFU);
-    record[9] = (uint8_t)((g_set_current_x100 >> 8) & 0xFFU);
-    crc = crc16_ccitt(record, 10U);
-    record[10] = (uint8_t)(crc & 0xFFU);
-    record[11] = (uint8_t)((crc >> 8) & 0xFFU);
+    if (g_settings_save_state != EEPROM_SAVE_IDLE) {
+        g_settings_save_pending = true;
+        return true;
+    }
+    (void)memset(g_settings_record, 0, sizeof(g_settings_record));
+    g_settings_sequence++;
+    g_settings_record[0] = SETTINGS_MAGIC_0;
+    g_settings_record[1] = SETTINGS_MAGIC_1;
+    g_settings_record[2] = SETTINGS_MAGIC_2;
+    g_settings_record[3] = SETTINGS_MAGIC_3;
+    g_settings_record[4] = SETTINGS_VERSION;
+    g_settings_record[5] = (uint8_t)(g_settings_sequence & 0xFFU);
+    g_settings_record[6] = (uint8_t)((g_settings_sequence >> 8) & 0xFFU);
+    g_settings_record[7] = (uint8_t)((g_settings_sequence >> 16) & 0xFFU);
+    g_settings_record[8] = (uint8_t)((g_settings_sequence >> 24) & 0xFFU);
+    g_settings_record[9] = (uint8_t)((uint16_t)g_set_temp_x10 & 0xFFU);
+    g_settings_record[10] = (uint8_t)(((uint16_t)g_set_temp_x10 >> 8) & 0xFFU);
+    g_settings_record[11] = (uint8_t)(g_set_current_x100 & 0xFFU);
+    g_settings_record[12] = (uint8_t)((g_set_current_x100 >> 8) & 0xFFU);
+    crc = crc16_ccitt(g_settings_record, 13U);
+    g_settings_record[13] = (uint8_t)(crc & 0xFFU);
+    g_settings_record[14] = (uint8_t)((crc >> 8) & 0xFFU);
+    g_settings_record[SETTINGS_COMMIT_OFFSET] = EEPROM_COMMIT_VALUE;
+    g_settings_page_offset = 0U;
+    g_settings_save_pending = false;
+    g_settings_save_state = EEPROM_SAVE_INVALIDATE_START;
+    return true;
+}
 
-    return eeprom_write_bytes(EEPROM_MEMORY_ADDRESS, record, sizeof(record));
+static void settings_save_retry(uint32_t now)
+{
+    g_settings_i2c_done = false;
+    g_settings_i2c_error = false;
+    g_settings_retry_tick = now + EEPROM_RETRY_DELAY_MS;
+    g_settings_save_state = EEPROM_SAVE_RETRY_WAIT;
+}
+
+static void settings_task(uint32_t now)
+{
+    uint16_t address;
+    uint16_t length;
+
+    switch (g_settings_save_state) {
+    case EEPROM_SAVE_IDLE:
+        if (g_settings_save_pending) {
+            (void)settings_save();
+        }
+        break;
+    case EEPROM_SAVE_INVALIDATE_START:
+        if (HAL_I2C_Mem_Write_IT(&MOTOR_UI_EEPROM_I2C_HANDLE,
+                                 (uint16_t)(EEPROM_I2C_ADDRESS_7BIT << 1),
+                                 (uint16_t)(g_settings_save_address + SETTINGS_COMMIT_OFFSET),
+                                 EEPROM_MEMORY_ADDRESS_SIZE, &g_settings_invalid_commit, 1U) != HAL_OK) {
+            settings_save_retry(now);
+        } else {
+            g_settings_i2c_done = false;
+            g_settings_i2c_error = false;
+            g_settings_retry_tick = now + EEPROM_WRITE_TIMEOUT_MS;
+            g_settings_save_state = EEPROM_SAVE_INVALIDATE_WAIT;
+        }
+        break;
+    case EEPROM_SAVE_INVALIDATE_WAIT:
+    case EEPROM_SAVE_PAGE_WAIT:
+    case EEPROM_SAVE_COMMIT_WAIT:
+        if (g_settings_i2c_error) {
+            settings_save_retry(now);
+        } else if (!g_settings_i2c_done && ((int32_t)(now - g_settings_retry_tick) >= 0)) {
+            settings_save_retry(now);
+        } else if (g_settings_i2c_done) {
+            if (g_settings_save_state == EEPROM_SAVE_INVALIDATE_WAIT) {
+                g_settings_ready_next_state = EEPROM_SAVE_PAGE_START;
+            } else if (g_settings_save_state == EEPROM_SAVE_PAGE_WAIT) {
+                g_settings_page_offset = (uint8_t)(g_settings_page_offset + EEPROM_PAGE_SIZE);
+                g_settings_ready_next_state = (g_settings_page_offset < SETTINGS_COMMIT_OFFSET)
+                                           ? EEPROM_SAVE_PAGE_START : EEPROM_SAVE_COMMIT_START;
+            } else {
+                g_settings_ready_next_state = EEPROM_SAVE_IDLE;
+            }
+            g_settings_i2c_done = false;
+            g_settings_retry_tick = now + EEPROM_WRITE_TIMEOUT_MS;
+            g_settings_save_state = EEPROM_SAVE_READY_WAIT;
+        }
+        break;
+    case EEPROM_SAVE_PAGE_START:
+        address = (uint16_t)(g_settings_save_address + g_settings_page_offset);
+        length = ((SETTINGS_COMMIT_OFFSET - g_settings_page_offset) < EEPROM_PAGE_SIZE)
+               ? (uint16_t)(SETTINGS_COMMIT_OFFSET - g_settings_page_offset) : EEPROM_PAGE_SIZE;
+        if (HAL_I2C_Mem_Write_IT(&MOTOR_UI_EEPROM_I2C_HANDLE,
+                                 (uint16_t)(EEPROM_I2C_ADDRESS_7BIT << 1), address,
+                                 EEPROM_MEMORY_ADDRESS_SIZE,
+                                 &g_settings_record[g_settings_page_offset], length) != HAL_OK) {
+            settings_save_retry(now);
+        } else {
+            g_settings_i2c_done = false;
+            g_settings_i2c_error = false;
+            g_settings_retry_tick = now + EEPROM_WRITE_TIMEOUT_MS;
+            g_settings_save_state = EEPROM_SAVE_PAGE_WAIT;
+        }
+        break;
+    case EEPROM_SAVE_COMMIT_START:
+        if (HAL_I2C_Mem_Write_IT(&MOTOR_UI_EEPROM_I2C_HANDLE,
+                                 (uint16_t)(EEPROM_I2C_ADDRESS_7BIT << 1),
+                                 (uint16_t)(g_settings_save_address + SETTINGS_COMMIT_OFFSET),
+                                 EEPROM_MEMORY_ADDRESS_SIZE,
+                                 &g_settings_record[SETTINGS_COMMIT_OFFSET], 1U) != HAL_OK) {
+            settings_save_retry(now);
+        } else {
+            g_settings_i2c_done = false;
+            g_settings_i2c_error = false;
+            g_settings_retry_tick = now + EEPROM_WRITE_TIMEOUT_MS;
+            g_settings_save_state = EEPROM_SAVE_COMMIT_WAIT;
+        }
+        break;
+    case EEPROM_SAVE_RETRY_WAIT:
+        if ((int32_t)(now - g_settings_retry_tick) >= 0) {
+            g_settings_save_state = EEPROM_SAVE_INVALIDATE_START;
+        }
+        break;
+    case EEPROM_SAVE_READY_WAIT:
+        if ((int32_t)(now - g_settings_retry_tick) >= 0) {
+            if (g_settings_ready_next_state == EEPROM_SAVE_IDLE) {
+                g_settings_save_address = (g_settings_save_address == EEPROM_SLOT_0_ADDRESS)
+                                        ? EEPROM_SLOT_1_ADDRESS : EEPROM_SLOT_0_ADDRESS;
+            }
+            g_settings_save_state = g_settings_ready_next_state;
+        }
+        break;
+    default:
+        g_settings_save_state = EEPROM_SAVE_IDLE;
+        break;
+    }
+}
+
+void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c == &MOTOR_UI_EEPROM_I2C_HANDLE) {
+        g_settings_i2c_done = true;
+    }
+}
+
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c == &MOTOR_UI_EEPROM_I2C_HANDLE) {
+        g_settings_i2c_error = true;
+    }
 }
 #else
 static bool settings_load(void)
@@ -553,12 +732,23 @@ static bool settings_save(void)
 #endif
 
 #if MOTOR_UI_STAGE >= 3U
-static bool adc_read_average(uint32_t channel,
-                             uint16_t sample_count,
-                             uint16_t *result)
+static bool adc_convert_once(uint16_t *raw)
+{
+    if (HAL_ADC_Start(&MOTOR_UI_ADC_HANDLE) != HAL_OK) {
+        return false;
+    }
+    if (HAL_ADC_PollForConversion(&MOTOR_UI_ADC_HANDLE, 10U) != HAL_OK) {
+        (void)HAL_ADC_Stop(&MOTOR_UI_ADC_HANDLE);
+        return false;
+    }
+    *raw = (uint16_t)HAL_ADC_GetValue(&MOTOR_UI_ADC_HANDLE);
+    return true;
+}
+
+static bool adc_select_channel(uint32_t channel)
 {
     ADC_ChannelConfTypeDef channel_config = {0};
-    uint32_t sum = 0U;
+    uint16_t dummy;
     uint16_t i;
 
     (void)HAL_ADC_Stop(&MOTOR_UI_ADC_HANDLE);
@@ -572,51 +762,51 @@ static bool adc_read_average(uint32_t channel,
         return false;
     }
 
-    for (i = 0U; i < sample_count; ++i) {
-        if (HAL_ADC_Start(&MOTOR_UI_ADC_HANDLE) != HAL_OK) {
+    for (i = 0U; i < ADC_DUMMY_CONVERSIONS; ++i) {
+        if (!adc_convert_once(&dummy)) {
             return false;
         }
-        if (HAL_ADC_PollForConversion(&MOTOR_UI_ADC_HANDLE, 10U) != HAL_OK) {
-            (void)HAL_ADC_Stop(&MOTOR_UI_ADC_HANDLE);
-            return false;
-        }
-        sum += HAL_ADC_GetValue(&MOTOR_UI_ADC_HANDLE);
-        (void)HAL_ADC_Stop(&MOTOR_UI_ADC_HANDLE);
+    }
+    return true;
+}
+
+static bool adc_read_average(uint32_t channel,
+                             uint16_t sample_count,
+                             uint16_t *result)
+{
+    uint32_t sum = 0U;
+    uint16_t i;
+    uint16_t raw;
+
+    if (!adc_select_channel(channel)) {
+        return false;
     }
 
+    for (i = 0U; i < sample_count; ++i) {
+        if (!adc_convert_once(&raw)) {
+            return false;
+        }
+        sum += raw;
+    }
+
+    (void)HAL_ADC_Stop(&MOTOR_UI_ADC_HANDLE);
     *result = (uint16_t)(sum / sample_count);
     return true;
 }
 
-static float adc_raw_to_mv(uint16_t raw)
+static bool acs_validate_presence(void)
 {
-    return ((float)raw * ADC_REFERENCE_MV) / ADC_FULL_SCALE;
-}
-
-static float adc_mv_to_acs_sensor_mv(float adc_mv)
-{
-    return adc_mv * ACS_SENSOR_MV_PER_ADC_MV_NUM /
-           ACS_SENSOR_MV_PER_ADC_MV_DEN;
-}
-
-static bool acs_calibrate_zero(void)
-{
-#if ACS_AUTO_ZERO_AT_STARTUP
-    /* PA1 / ADC_CHANNEL_1: sifir akimda olculen ofset. Teorik 2.5V varsayilmaz. */
+    /* Baslangicta sadece ADC/sensor baglantisinin makul aralikta oldugunu
+     * kontrol et. Akim p-p/RMS penceresinden hesaplanir; burada ofset
+     * saklanmaz ve mutlak kalibrasyon varsayilmaz. */
     uint16_t raw;
-    if (!adc_read_average(ACS_ADC_CHANNEL, ACS_ZERO_SAMPLE_COUNT, &raw)) {
+    if (!adc_read_average(ACS_ADC_CHANNEL, ACS_PRESENCE_SAMPLE_COUNT, &raw)) {
         return false;
     }
     if ((raw < ACS_PRESENT_RAW_MIN) || (raw > ACS_PRESENT_RAW_MAX)) {
         return false;
     }
-    g_acs_zero_sensor_mv = adc_mv_to_acs_sensor_mv(adc_raw_to_mv(raw));
     return true;
-#else
-    /* Auto-zero kapaliysa yalniz olcumle girilen config ofseti kullanilir. */
-    g_acs_zero_sensor_mv = ACS_FALLBACK_ZERO_SENSOR_MV;
-    return true;
-#endif
 }
 
 static bool read_temperature_x10(int16_t *temperature_x10)
@@ -661,47 +851,34 @@ static bool read_temperature_x10(int16_t *temperature_x10)
     return true;
 }
 
-static bool read_current_x100(uint16_t *current_x100)
+static bool acs_pp_to_current_x100(uint16_t raw_min,
+                                   uint16_t raw_max,
+                                   uint16_t sample_count,
+                                   uint16_t present_count,
+                                   uint16_t *current_x100)
 {
-    uint16_t raw;
-    float adc_mv;
-    float sensor_mv;
+    float vpp_mv;
+    float vrms_mv;
     float current_a;
     int32_t value_x100;
 
-    if (!adc_read_average(ACS_ADC_CHANNEL, ADC_AVERAGE_SAMPLES, &raw)) {
+    if ((sample_count < ACS_PP_SAMPLE_MIN) ||
+        (present_count < (sample_count / 2U)) ||
+        (raw_max < raw_min)) {
         return false;
     }
-    if ((raw < ACS_PRESENT_RAW_MIN) || (raw > ACS_PRESENT_RAW_MAX)) {
-        return false;
-    }
 
-    adc_mv = adc_raw_to_mv(raw);
-    sensor_mv = adc_mv_to_acs_sensor_mv(adc_mv);
-
-#if ACS_IDLE_AUTO_ZERO_TRACKING
-#if MOTOR_UI_STAGE >= 4U
-    if (!g_motor_power_permitted) {
-        g_acs_zero_sensor_mv += ACS_IDLE_AUTO_ZERO_ALPHA *
-                                 (sensor_mv - g_acs_zero_sensor_mv);
-    }
-#else
-    g_acs_zero_sensor_mv += ACS_IDLE_AUTO_ZERO_ALPHA *
-                             (sensor_mv - g_acs_zero_sensor_mv);
-#endif
-#endif
-
-    current_a = fabsf(sensor_mv - g_acs_zero_sensor_mv) /
-                ACS_SENSITIVITY_MV_PER_A;
-
-    if (!isfinite(current_a) ||
-        (current_a < 0.0f) ||
-        (current_a > 30.0f)) {
+    vpp_mv = ((float)(raw_max - raw_min) * ADC_REFERENCE_MV *
+              ACS_SENSOR_MV_PER_ADC_MV_NUM) /
+             (ADC_FULL_SCALE * ACS_SENSOR_MV_PER_ADC_MV_DEN);
+    vrms_mv = (vpp_mv * 0.5f) * ACS_SINE_RMS_FACTOR;
+    current_a = vrms_mv / ACS_SENSITIVITY_MV_PER_A;
+    if (!isfinite(current_a) || (current_a < 0.0f) || (current_a > 30.0f)) {
         return false;
     }
 
     value_x100 = (int32_t)lroundf(current_a * 100.0f);
-    if (value_x100 < (int32_t)ACS_CURRENT_DEADBAND_X100) {
+    if (value_x100 <= (int32_t)ACS_ZERO_CURRENT_CUTOFF_X100) {
         value_x100 = 0;
     }
     if (value_x100 > 3000) {
@@ -712,12 +889,82 @@ static bool read_current_x100(uint16_t *current_x100)
     return true;
 }
 
+static void acs_pp_window_start(uint32_t now)
+{
+    memset(&g_acs_pp_window, 0, sizeof(g_acs_pp_window));
+    g_acs_pp_window.start_tick = now;
+    if (!adc_select_channel(ACS_ADC_CHANNEL)) {
+        g_acs_pp_window.result_ready = true;
+        return;
+    }
+    g_acs_pp_window.active = true;
+}
+
+static void acs_pp_window_finish(void)
+{
+    (void)HAL_ADC_Stop(&MOTOR_UI_ADC_HANDLE);
+    g_acs_pp_window.active = false;
+    g_acs_pp_window.result_ready = true;
+    g_acs_pp_window.result_valid = acs_pp_to_current_x100(
+        g_acs_pp_window.raw_min, g_acs_pp_window.raw_max,
+        g_acs_pp_window.sample_count, g_acs_pp_window.present_count,
+        &g_acs_pp_window.result_x100);
+}
+
+static void acs_pp_window_task(uint32_t now)
+{
+    uint16_t raw;
+
+    if (!g_acs_pp_window.active) {
+        return;
+    }
+    if ((now - g_acs_pp_window.start_tick) >= ACS_PP_WINDOW_MS) {
+        acs_pp_window_finish();
+        return;
+    }
+    if (!adc_convert_once(&raw)) {
+        acs_pp_window_finish();
+        g_acs_pp_window.result_valid = false;
+        return;
+    }
+
+    if (g_acs_pp_window.sample_count == 0U) {
+        g_acs_pp_window.raw_min = raw;
+        g_acs_pp_window.raw_max = raw;
+    } else {
+        if (raw < g_acs_pp_window.raw_min) {
+            g_acs_pp_window.raw_min = raw;
+        }
+        if (raw > g_acs_pp_window.raw_max) {
+            g_acs_pp_window.raw_max = raw;
+        }
+    }
+    if ((raw >= ACS_PRESENT_RAW_MIN) && (raw <= ACS_PRESENT_RAW_MAX)) {
+        ++g_acs_pp_window.present_count;
+    }
+    ++g_acs_pp_window.sample_count;
+}
+
+static bool acs_pp_window_consume(uint16_t *current_x100)
+{
+    if (!g_acs_pp_window.result_ready) {
+        if (g_acs_pp_window.active) {
+            acs_pp_window_finish();
+        }
+        return false;
+    }
+    if (g_acs_pp_window.result_valid) {
+        *current_x100 = g_acs_pp_window.result_x100;
+    }
+    return g_acs_pp_window.result_valid;
+}
+
 static void sensors_update(void)
 {
     int16_t raw_temp_x10;
     uint16_t raw_current_x100;
     bool temp_ok = read_temperature_x10(&raw_temp_x10);
-    bool current_ok = read_current_x100(&raw_current_x100);
+    bool current_ok = acs_pp_window_consume(&raw_current_x100);
 
     g_temp_sensor_valid = temp_ok;
     g_current_sensor_valid = current_ok;
@@ -733,18 +980,7 @@ static void sensors_update(void)
     }
 
     if (current_ok) {
-        if (!g_sensor_filter_initialized) {
-            g_current_filter_x100 = (float)raw_current_x100;
-        } else {
-            g_current_filter_x100 += ACS_CURRENT_FILTER_ALPHA *
-                                     ((float)raw_current_x100 -
-                                      g_current_filter_x100);
-        }
-        g_measured_current_x100 =
-            (uint16_t)lroundf(g_current_filter_x100);
-        if (g_measured_current_x100 < ACS_CURRENT_DEADBAND_X100) {
-            g_measured_current_x100 = 0U;
-        }
+        g_measured_current_x100 = raw_current_x100;
     }
 
     update_display_hysteresis_values();
@@ -890,44 +1126,6 @@ static void draw_splash_screen(void)
                  acilis_bitmap_bits);
 }
 
-/* Main screen columns split at x=65 (see vertical line in OLED layout). */
-static uint8_t column_centered_x(const char *text,
-                                 uint8_t col_left,
-                                 uint8_t col_right)
-{
-    const uint8_t w = u8g2_GetUTF8Width(&g_u8g2, text);
-    const uint16_t mid = ((uint16_t)col_left + (uint16_t)col_right) / 2U;
-    int16_t x = (int16_t)mid - (int16_t)(w / 2U);
-
-    if (x < (int16_t)col_left) {
-        return col_left;
-    }
-    if ((x + (int16_t)w) > ((int16_t)col_right + 1)) {
-        return (uint8_t)((int16_t)col_right - (int16_t)w + 1);
-    }
-    return (uint8_t)x;
-}
-
-static uint8_t column_aligned_left_x(const char *text_a,
-                                     const char *text_b,
-                                     uint8_t col_left,
-                                     uint8_t col_right)
-{
-    const uint8_t w_a = u8g2_GetUTF8Width(&g_u8g2, text_a);
-    const uint8_t w_b = u8g2_GetUTF8Width(&g_u8g2, text_b);
-    const uint8_t w = (w_a > w_b) ? w_a : w_b;
-    const uint16_t mid = ((uint16_t)col_left + (uint16_t)col_right) / 2U;
-    int16_t x = (int16_t)mid - (int16_t)(w / 2U);
-
-    if (x < (int16_t)col_left) {
-        return col_left;
-    }
-    if ((x + (int16_t)w) > ((int16_t)col_right + 1)) {
-        return (uint8_t)((int16_t)col_right - (int16_t)w + 1);
-    }
-    return (uint8_t)x;
-}
-
 static void draw_main_screen(void)
 {
     char temp_text[12];
@@ -943,19 +1141,19 @@ static void draw_main_screen(void)
                                     false);
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, column_centered_x("CRYSTAL", 0U, 127U), 9U, "CRYSTAL");
+    u8g2_DrawStr(&g_u8g2, 47U, 9U, "CRYSTAL");
     u8g2_DrawLine(&g_u8g2, 0U, 13U, 127U, 13U);
     u8g2_DrawLine(&g_u8g2, 65U, 14U, 65U, 64U);
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawUTF8(&g_u8g2, column_centered_x("Sicaklik", 0U, 65U), 32U, "Sicaklik");
+    u8g2_DrawUTF8(&g_u8g2, 9U, 32U, "Sicaklik");
     u8g2_SetFont(&g_u8g2, u8g2_font_9x15_tf);
-    u8g2_DrawUTF8(&g_u8g2, column_centered_x(temp_text, 0U, 65U), 52U, temp_text);
+    u8g2_DrawUTF8(&g_u8g2, 4U, 52U, temp_text);
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawUTF8(&g_u8g2, column_centered_x("Akim", 65U, 127U) + 3U, 32U, "Akim");
+    u8g2_DrawUTF8(&g_u8g2, 88U, 32U, "Akim");
     u8g2_SetFont(&g_u8g2, u8g2_font_9x15_tf);
-    u8g2_DrawUTF8(&g_u8g2, column_centered_x(current_text, 65U, 127U) + 3U, 52U, current_text);
+    u8g2_DrawUTF8(&g_u8g2, 68U, 52U, current_text);
 }
 
 static void draw_temp_alert_screen(void)
@@ -967,25 +1165,25 @@ static void draw_temp_alert_screen(void)
     format_current_for_display(g_display_current_x100, current_text, sizeof(current_text), false);
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, column_centered_x("CRYSTAL", 0U, 127U), 9U, "CRYSTAL");
+    u8g2_DrawStr(&g_u8g2, 47U, 9U, "CRYSTAL");
     u8g2_DrawLine(&g_u8g2, 0U, 13U, 127U, 13U);
     u8g2_DrawLine(&g_u8g2, 65U, 14U, 65U, 64U);
 
     /* Draw Current (Normal) */
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawUTF8(&g_u8g2, column_centered_x("Akim", 65U, 127U) + 3U, 32U, "Akim");
+    u8g2_DrawUTF8(&g_u8g2, 88U, 32U, "Akim");
     u8g2_SetFont(&g_u8g2, u8g2_font_9x15_tf);
-    u8g2_DrawUTF8(&g_u8g2, column_centered_x(current_text, 65U, 127U) + 3U, 52U, current_text);
+    u8g2_DrawUTF8(&g_u8g2, 68U, 52U, current_text);
 
     /* Draw Temp (Alerting) */
     if (g_blink_on) {
         /* tempalert_bits is 30x33 */
-        u8g2_DrawXBM(&g_u8g2, 17U, 24U, 30U, 33U, tempalert_bits);
+        u8g2_DrawXBM(&g_u8g2, 16U, 34U, 30U, 33U, tempalert_bits);
     } else {
         u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-        u8g2_DrawUTF8(&g_u8g2, column_centered_x("Sicaklik", 0U, 65U), 32U, "Sicaklik");
+        u8g2_DrawUTF8(&g_u8g2, 7U, 29U, "Sicaklik");
         u8g2_SetFont(&g_u8g2, u8g2_font_9x15_tf);
-        u8g2_DrawUTF8(&g_u8g2, column_centered_x(temp_text, 0U, 65U), 52U, temp_text);
+        u8g2_DrawUTF8(&g_u8g2, 16U, 40U, temp_text);
     }
 }
 
@@ -998,25 +1196,25 @@ static void draw_current_alert_screen(void)
     format_current_for_display(g_display_current_x100, current_text, sizeof(current_text), false);
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, column_centered_x("CRYSTAL", 0U, 127U), 9U, "CRYSTAL");
+    u8g2_DrawStr(&g_u8g2, 47U, 9U, "CRYSTAL");
     u8g2_DrawLine(&g_u8g2, 0U, 13U, 127U, 13U);
-    u8g2_DrawLine(&g_u8g2, 65U, 14U, 65U, 64U);
+    u8g2_DrawLine(&g_u8g2, 68U, 14U, 68U, 64U);
 
     /* Draw Temp (Normal) */
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawUTF8(&g_u8g2, column_centered_x("Sicaklik", 0U, 65U), 32U, "Sicaklik");
+    u8g2_DrawUTF8(&g_u8g2, 9U, 32U, "Sicaklik");
     u8g2_SetFont(&g_u8g2, u8g2_font_9x15_tf);
-    u8g2_DrawUTF8(&g_u8g2, column_centered_x(temp_text, 0U, 65U), 52U, temp_text);
+    u8g2_DrawUTF8(&g_u8g2, 4U, 52U, temp_text);
 
     /* Draw Current (Alerting) */
     if (g_blink_on) {
         /* currentalert_bits is 24x24 */
-        u8g2_DrawXBM(&g_u8g2, 85U, 28U, 24U, 24U, currentalert_bits);
+        u8g2_DrawXBM(&g_u8g2, 89U, 38U, 24U, 24U, currentalert_bits);
     } else {
         u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-        u8g2_DrawUTF8(&g_u8g2, column_centered_x("Akim", 65U, 127U) + 3U, 32U, "Akim");
+        u8g2_DrawUTF8(&g_u8g2, 89U, 28U, "Akim");
         u8g2_SetFont(&g_u8g2, u8g2_font_9x15_tf);
-        u8g2_DrawUTF8(&g_u8g2, column_centered_x(current_text, 65U, 127U) + 3U, 52U, current_text);
+        u8g2_DrawUTF8(&g_u8g2, 86U, 38U, current_text);
     }
 }
 
@@ -1029,28 +1227,28 @@ static void draw_both_alert_screen(void)
     format_current_for_display(g_display_current_x100, current_text, sizeof(current_text), false);
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, column_centered_x("CRYSTAL", 0U, 127U), 9U, "CRYSTAL");
+    u8g2_DrawStr(&g_u8g2, 47U, 9U, "CRYSTAL");
     u8g2_DrawLine(&g_u8g2, 0U, 13U, 127U, 13U);
-    u8g2_DrawLine(&g_u8g2, 65U, 14U, 65U, 64U);
+    u8g2_DrawLine(&g_u8g2, 68U, 14U, 68U, 64U);
 
     /* Draw Temp (Alerting) */
     if (g_blink_on) {
-        u8g2_DrawXBM(&g_u8g2, 17U, 24U, 30U, 33U, tempalert_bits);
+        u8g2_DrawXBM(&g_u8g2, 18U, 33U, 30U, 33U, tempalert_bits);
     } else {
         u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-        u8g2_DrawUTF8(&g_u8g2, column_centered_x("Sicaklik", 0U, 65U), 32U, "Sicaklik");
+        u8g2_DrawUTF8(&g_u8g2, 9U, 28U, "Sicaklik");
         u8g2_SetFont(&g_u8g2, u8g2_font_9x15_tf);
-        u8g2_DrawUTF8(&g_u8g2, column_centered_x(temp_text, 0U, 65U), 52U, temp_text);
+        u8g2_DrawUTF8(&g_u8g2, 18U, 39U, temp_text);
     }
 
     /* Draw Current (Alerting) */
     if (g_blink_on) {
-        u8g2_DrawXBM(&g_u8g2, 85U, 28U, 24U, 24U, currentalert_bits);
+        u8g2_DrawXBM(&g_u8g2, 89U, 38U, 24U, 24U, currentalert_bits);
     } else {
         u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-        u8g2_DrawUTF8(&g_u8g2, column_centered_x("Akim", 65U, 127U) + 3U, 32U, "Akim");
+        u8g2_DrawUTF8(&g_u8g2, 89U, 28U, "Akim");
         u8g2_SetFont(&g_u8g2, u8g2_font_9x15_tf);
-        u8g2_DrawUTF8(&g_u8g2, column_centered_x(current_text, 65U, 127U) + 3U, 52U, current_text);
+        u8g2_DrawUTF8(&g_u8g2, 86U, 38U, current_text);
     }
 }
 
@@ -1070,28 +1268,21 @@ static void draw_settings_screen(void)
                                    false);
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, column_centered_x("AYARLAR", 0U, 127U), 9U, "AYARLAR");
+    u8g2_DrawStr(&g_u8g2, 46U, 9U, "AYARLAR");
     u8g2_DrawLine(&g_u8g2, 0U, 13U, 127U, 13U);
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawUTF8(&g_u8g2, 12U, 24U, "Sicaklik");
+    u8g2_DrawUTF8(&g_u8g2, 27U, 24U, "Sicaklik");
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawUTF8(&g_u8g2, 12U, 36U, "Akim");
+    u8g2_DrawUTF8(&g_u8g2, 27U, 36U, "Akim");
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawUTF8(&g_u8g2, 12U, 49U, "Fabrika Ayarlari");
+    u8g2_DrawUTF8(&g_u8g2, 27U, 49U, "Varsayilan");
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawUTF8(&g_u8g2, 12U, 61U, "Ana Ekrana Don");
-    u8g2_DrawXBM(&g_u8g2, 0U, arrow_y[g_menu_index], 9U, 7U, arrow_bits);
-    {
-        const uint8_t set_value_x = column_aligned_left_x(temp_set_text,
-                                                         current_set_text,
-                                                         66U,
-                                                         127U);
-
-        u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-        u8g2_DrawUTF8(&g_u8g2, set_value_x, 24U, temp_set_text);
-        u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-        u8g2_DrawUTF8(&g_u8g2, set_value_x, 36U, current_set_text);
-    }
+    u8g2_DrawUTF8(&g_u8g2, 27U, 61U, "Ana Ekrana Don");
+    u8g2_DrawXBM(&g_u8g2, 3U, arrow_y[g_menu_index], 17U, 7U, arrow_bits);
+    u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
+    u8g2_DrawUTF8(&g_u8g2, 92U, 24U, temp_set_text);
+    u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
+    u8g2_DrawUTF8(&g_u8g2, 92U, 36U, current_set_text);
 }
 
 static void draw_temp_set_screen(void)
@@ -1107,18 +1298,18 @@ static void draw_temp_set_screen(void)
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
     u8g2_DrawStr(&g_u8g2,
-                  column_centered_x(title, 0U, 127U),
+                  25U,
                   9U,
                   title);
     u8g2_DrawLine(&g_u8g2, 0U, 13U, 127U, 13U);
     u8g2_SetFont(&g_u8g2, u8g2_font_9x15_tf);
     u8g2_DrawUTF8(&g_u8g2,
-                  column_centered_x(value_text, 0U, 127U),
+                  34U,
                   36U,
                   value_text);
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
     u8g2_DrawUTF8(&g_u8g2,
-                  column_centered_x(hint, 0U, 127U),
+                  19U,
                   57U,
                   hint);
 }
@@ -1136,18 +1327,18 @@ static void draw_current_set_screen(void)
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
     u8g2_DrawStr(&g_u8g2,
-                  column_centered_x(title, 0U, 127U),
+                  34U,
                   9U,
                   title);
     u8g2_DrawLine(&g_u8g2, 0U, 13U, 127U, 13U);
     u8g2_SetFont(&g_u8g2, u8g2_font_9x15_tf);
     u8g2_DrawUTF8(&g_u8g2,
-                  column_centered_x(value_text, 0U, 127U),
+                  28U,
                   36U,
                   value_text);
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
     u8g2_DrawUTF8(&g_u8g2,
-                  column_centered_x(hint, 0U, 127U),
+                  19U,
                   57U,
                   hint);
 }
@@ -1157,14 +1348,14 @@ static void draw_default_confirm_screen(void)
     uint8_t arrow_y = (g_confirm_selection == CONFIRM_YES) ? 32U : 47U;
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, column_centered_x("FABRIKA AYARLARINI", 0U, 127U), 11U, "FABRIKA AYARLARINI");
+    u8g2_DrawStr(&g_u8g2, 5U, 11U, "VARSAYILAN DEGERLERI");
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, column_centered_x("ONAYLIYOR MUSUNUZ?", 0U, 127U), 24U, "ONAYLIYOR MUSUNUZ?");
+    u8g2_DrawStr(&g_u8g2, 10U, 24U, "ONAYLIYOR MUSUNUZ?");
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, 24U, 40U, "EVET");
+    u8g2_DrawStr(&g_u8g2, 29U, 40U, "EVET");
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, 24U, 55U, "HAYIR");
-    u8g2_DrawXBM(&g_u8g2, 0U, arrow_y, 9U, 7U, arrow_bits);
+    u8g2_DrawStr(&g_u8g2, 29U, 55U, "HAYIR");
+    u8g2_DrawXBM(&g_u8g2, 5U, arrow_y, 17U, 7U, arrow_bits);
 }
 
 static void draw_confirm_1_screen(void)
@@ -1172,14 +1363,14 @@ static void draw_confirm_1_screen(void)
     uint8_t arrow_y = (g_confirm_selection == CONFIRM_YES) ? 32U : 47U;
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawUTF8(&g_u8g2, column_centered_x("DEGISIKLIKLERI", 0U, 127U), 11U, "DEGISIKLIKLERI");
+    u8g2_DrawUTF8(&g_u8g2, 22U, 11U, "DEGISIKLIKLERI");
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, column_centered_x("ONAYLIYOR MUSUNUZ?", 0U, 127U), 24U, "ONAYLIYOR MUSUNUZ?");
+    u8g2_DrawStr(&g_u8g2, 10U, 24U, "ONAYLIYOR MUSUNUZ?");
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, 24U, 40U, "EVET");
+    u8g2_DrawStr(&g_u8g2, 29U, 40U, "EVET");
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, 24U, 55U, "HAYIR");
-    u8g2_DrawXBM(&g_u8g2, 0U, arrow_y, 9U, 7U, arrow_bits);
+    u8g2_DrawStr(&g_u8g2, 29U, 55U, "HAYIR");
+    u8g2_DrawXBM(&g_u8g2, 5U, arrow_y, 17U, 7U, arrow_bits);
 }
 
 static void draw_confirm_2_screen(void)
@@ -1187,14 +1378,14 @@ static void draw_confirm_2_screen(void)
     uint8_t arrow_y = (g_confirm_selection == CONFIRM_YES) ? 32U : 47U;
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawUTF8(&g_u8g2, column_centered_x("DEGISIKLIKLERDEN", 0U, 127U), 12U, "DEGISIKLIKLERDEN");
+    u8g2_DrawUTF8(&g_u8g2, 16U, 12U, "DEGISIKLIKLERDEN");
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, 24U, 40U, "EVET");
+    u8g2_DrawStr(&g_u8g2, 29U, 40U, "EVET");
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, 24U, 55U, "HAYIR");
-    u8g2_DrawXBM(&g_u8g2, 0U, arrow_y, 9U, 7U, arrow_bits);
+    u8g2_DrawStr(&g_u8g2, 29U, 55U, "HAYIR");
+    u8g2_DrawXBM(&g_u8g2, 5U, arrow_y, 17U, 7U, arrow_bits);
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawUTF8(&g_u8g2, column_centered_x("EMIN MISINIZ?", 0U, 127U), 24U, "EMIN MISINIZ?");
+    u8g2_DrawUTF8(&g_u8g2, 25U, 24U, "EMIN MISINIZ?");
 }
 
 
@@ -2215,8 +2406,10 @@ void MotorUI_Init(void)
     }
     (void)HAL_ADCEx_Calibration_Start(&MOTOR_UI_ADC_HANDLE);
     HAL_Delay(100U);
-    g_current_sensor_valid = acs_calibrate_zero();
+    g_current_sensor_valid = acs_validate_presence();
     sensors_update();
+    /* Ilk pencere burada baslar; ilk 200ms sensor cevriminde sonucu tuketilir. */
+    acs_pp_window_start(HAL_GetTick());
     update_alert_state();
 #endif
 
@@ -2258,6 +2451,12 @@ void MotorUI_Task(void)
 {
     uint32_t now = HAL_GetTick();
 
+#if MOTOR_UI_STAGE >= 3U
+    /* ADC sahipligi: ACS penceresi tek ornekli ilerler ve pencere bitince
+     * ADC durur. NTC okumasina ait 200ms cevrim ancak bu durgun durumda baslar. */
+    acs_pp_window_task(now);
+#endif
+
     if (g_screen == UI_SCREEN_SPLASH) {
         if ((now - g_init_tick) >= UI_SPLASH_MS) {
             g_screen = UI_SCREEN_MAIN;
@@ -2276,6 +2475,9 @@ void MotorUI_Task(void)
     if ((now - g_last_sensor_tick) >= SENSOR_UPDATE_MS) {
         g_last_sensor_tick = now;
         sensors_update();
+        /* Tamamlanan son ACS penceresi sensors_update() icinde tuketildi.
+         * Sonraki pencere NTC okumasindan sonra baslar; iki kanal cakismiyor. */
+        acs_pp_window_start(HAL_GetTick());
         update_alert_state();
     }
 #else
@@ -2288,6 +2490,11 @@ void MotorUI_Task(void)
 #endif
 
     safety_update_outputs(now);
+
+#if MOTOR_UI_STAGE >= 3U && EEPROM_ENABLE
+    /* EEPROM yazimi alarm/role yolundan sonra, tek I2C adimiyla ilerler. */
+    settings_task(now);
+#endif
 
     if (g_alert_forced || g_edit_mode) {
         uint32_t blink_interval = g_alert_forced
@@ -2346,9 +2553,6 @@ void MotorUI_SetSimulatedValues(int16_t temperature_x10,
     }
     if (current_x100 > CURRENT_MAX_X100) {
         current_x100 = CURRENT_MAX_X100;
-    }
-    if (current_x100 < ACS_CURRENT_DEADBAND_X100) {
-        current_x100 = 0U;
     }
 
     measured_changed =

@@ -138,6 +138,10 @@ static void MX_I2C1_Init(void)
     hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
     hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
     if (HAL_I2C_Init(&hi2c1) != HAL_OK) Error_Handler();
+    /* EEPROM'nin arka plan yazimi HAL I2C tamamlanma/hata callbackleriyle
+     * ilerler. Bu, EXTI callback zincirinden tamamen ayridir. */
+    HAL_NVIC_SetPriority(I2C1_IRQn, 1U, 0U);
+    HAL_NVIC_EnableIRQ(I2C1_IRQn);
 }
 
 static void MX_I2C2_Init(void)
@@ -165,6 +169,12 @@ void EXTI4_15_IRQHandler(void)
     HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_6);
     HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_7);
     HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_14);
+}
+
+void I2C1_IRQHandler(void)
+{
+    HAL_I2C_EV_IRQHandler(&hi2c1);
+    HAL_I2C_ER_IRQHandler(&hi2c1);
 }
 
 /* Tum buton EXTI olaylari buraya gelir. MotorUI_Task() polling yaptiginden
