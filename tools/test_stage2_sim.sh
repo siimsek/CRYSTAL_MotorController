@@ -15,4 +15,4 @@ gcc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections \
     -I"$ROOT/tools/stubs" -I"$TMP" \
     "$TMP/test_stage2_sim.c" -Wl,--gc-sections -lm -o "$TMP/test_stage2_sim"
 "$TMP/test_stage2_sim"
-echo "Stage 1/2 simule deger host testi basarili."
+echo "Aşama 1/2 benzetimli değer yerel testi başarıyla geçti."

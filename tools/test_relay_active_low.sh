@@ -23,4 +23,4 @@ gcc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections \
     -I"$ROOT/tools/stubs" -I"$TMP" \
     "$TMP/test_safety_host.c" -Wl,--gc-sections -lm -o "$TMP/test_safety_host"
 "$TMP/test_safety_host"
-echo "Aktif-low/NC role fail-safe host testi basarili."
+echo "Aktif-düşük/NC röle güvenli-başlangıç yerel testi başarıyla geçti."

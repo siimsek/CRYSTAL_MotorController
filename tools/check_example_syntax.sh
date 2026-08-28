@@ -11,4 +11,4 @@ cp "$ROOT/main_kullanim_ornegi.c" "$ROOT/include/motor_ui.h" \
 gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
     -I"$ROOT/tools/stubs" -I"$TMP" \
     "$TMP/main_kullanim_ornegi.c"
-echo "CubeMX kullanim ornegi host sozdizimi kontrolu basarili."
+echo "CubeMX kullanım örneği yerel sözdizimi kontrolü başarıyla geçti."

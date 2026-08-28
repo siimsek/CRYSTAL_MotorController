@@ -14,4 +14,4 @@ gcc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections \
     -I"$ROOT/tools/stubs" -I"$TMP" \
     "$TMP/test_acs_pp_rms.c" -Wl,--gc-sections -lm -o "$TMP/test_acs_pp_rms"
 "$TMP/test_acs_pp_rms"
-echo "ACS p-p/sinus-RMS host testi basarili."
+echo "ACS tepe-tepe/sinüs RMS yerel testi başarıyla geçti."

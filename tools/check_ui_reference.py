@@ -78,7 +78,7 @@ OPERATIONS = {
 def function_body(name: str) -> str:
     match = re.search(rf"static void {name}\(void\)\n{{", SOURCE)
     if not match:
-        raise ValueError(f"drawing function missing: {name}")
+        raise ValueError(f"çizim fonksiyonu bulunamadı: {name}")
     start = match.end()
     depth = 1
     for index in range(start, len(SOURCE)):
@@ -88,7 +88,7 @@ def function_body(name: str) -> str:
             depth -= 1
             if depth == 0:
                 return SOURCE[start:index]
-    raise ValueError(f"unterminated drawing function: {name}")
+    raise ValueError(f"çizim fonksiyonu sonlandırılmamış: {name}")
 
 
 def bit_reverse(value: int) -> int:
@@ -98,7 +98,7 @@ def bit_reverse(value: int) -> int:
 def bitmap_bytes(symbol: str) -> list[int]:
     match = re.search(rf"{symbol}\[\]\s*=\s*{{(.*?)}};", SOURCE, re.S)
     if not match:
-        raise ValueError(f"bitmap missing: {symbol}")
+        raise ValueError(f"bitmap bulunamadı: {symbol}")
     return [int(value, 0) for value in re.findall(r"0x[0-9a-fA-F]+|\b\d+\b", match.group(1))]
 
 
@@ -116,15 +116,15 @@ def main() -> int:
         "y": 5, "radius": 3, "off": "outline_motor_path_cut",
         "on": "filled_motor_path_permitted",
     }:
-        errors.append("unexpected relay status indicator reference")
+        errors.append("röle durum göstergesi referansı beklenenden farklı")
     for operation in (
         "u8g2_DrawCircle(&g_u8g2, 123U, 5U, 3U, U8G2_DRAW_ALL)",
         "u8g2_DrawDisc(&g_u8g2, 123U, 5U, 3U, U8G2_DRAW_ALL)",
     ):
         if operation not in SOURCE:
-            errors.append(f"relay status indicator missing: {operation}")
+            errors.append(f"röle durum göstergesi eksik: {operation}")
     if frame_names != list(FUNCTIONS):
-        errors.append(f"unexpected JSON frame set/order: {frame_names}")
+        errors.append(f"JSON ekran kümesi/sırası beklenenden farklı: {frame_names}")
 
     for frame in FRAMES:
         name = frame["name"]
@@ -137,17 +137,17 @@ def main() -> int:
             continue
         for operation in OPERATIONS[name]:
             if operation not in body:
-                errors.append(f"{name}: missing reference operation {operation}")
+                errors.append(f"{name}: referans işlemi eksik: {operation}")
         for element in frame["elements"]:
             if element["type"] == "text" and "variable" not in element:
                 text = firmware_text(element["text"])
                 if f'"{text}"' not in body:
-                    errors.append(f"{name}: reference text missing: {element['text']}")
+                    errors.append(f"{name}: referans metni eksik: {element['text']}")
         if "u8g2_font_6x10_tf" not in body:
-            errors.append(f"{name}: reference size-1 font missing")
+            errors.append(f"{name}: referans 1. boyut yazı tipi eksik")
         if any(element.get("size") == 2 for element in frame["elements"]):
             if "u8g2_font_9x15_tf" not in body:
-                errors.append(f"{name}: reference size-2 font missing")
+                errors.append(f"{name}: referans 2. boyut yazı tipi eksik")
 
     bitmap_symbols = {"tempalert": "tempalert_bits", "akimalert": "currentalert_bits", "ok_0": "arrow_bits"}
     for frame in FRAMES:
@@ -157,7 +157,7 @@ def main() -> int:
             variable = element["variable"]
             symbol = bitmap_symbols.get(variable, "arrow_bits" if variable.startswith("ok_") else None)
             if symbol is None:
-                errors.append(f"{frame['name']}: unknown bitmap binding {variable}")
+                errors.append(f"{frame['name']}: bilinmeyen bitmap bağlantısı: {variable}")
                 continue
             expected = [bit_reverse(value) for value in element["data"]]
             try:
@@ -166,13 +166,13 @@ def main() -> int:
                 errors.append(str(error))
                 continue
             if actual != expected:
-                errors.append(f"{frame['name']}: {symbol} data differs from JSON bitmap")
+                errors.append(f"{frame['name']}: {symbol} verisi JSON bitmapinden farklı")
 
     if errors:
         print("ARAYUZ REFERANS HATASI:")
         print("\n".join(f"  - {error}" for error in errors))
         return 1
-    print("OLED JSON referansinin tum ekran/geometri/font/bitmap kontrolleri basarili.")
+    print("OLED JSON referansının tüm ekran/geometri/yazı tipi/bitmap kontrolleri başarıyla geçti.")
     return 0
 
 

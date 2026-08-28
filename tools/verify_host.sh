@@ -12,4 +12,4 @@ bash "$ROOT/tools/test_stage2_sim.sh"
 bash "$ROOT/tools/check_example_syntax.sh"
 git -C "$ROOT" diff --check
 
-echo "Tum yerel host dogrulamalari basarili."
+echo "Tüm yerel doğrulamalar başarıyla geçti."

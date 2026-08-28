@@ -14,4 +14,4 @@ gcc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections \
     -I"$ROOT/tools/stubs" -I"$TMP" \
     "$TMP/test_safety_host.c" -Wl,--gc-sections -lm -o "$TMP/test_safety_host"
 "$TMP/test_safety_host"
-echo "Guvenlik/ADC/IRQ host testi basarili."
+echo "Güvenlik/ADC/IRQ yerel testi başarıyla geçti."

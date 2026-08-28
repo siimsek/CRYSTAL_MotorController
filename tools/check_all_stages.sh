@@ -19,10 +19,10 @@ for stage in 1 2 3 4; do
       -e "s/\(#define EEPROM_ENABLE[[:space:]]*\)[0-9]*U/\11U/" \
       "$ROOT/include/motor_ui_config.h" > "$DIR/motor_ui_config.h"
 
-    echo "[CHECK] Stage $stage"
+    echo "[KONTROL] Aşama $stage"
     gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
         -I"$STUBS" -I"$DIR" \
         "$DIR/motor_ui.c" "$DIR/u8g2_stm32_port.c"
 done
 
-echo "Tum Stage 1-4 kosullu derleme kontrolleri basarili."
+echo "Tüm Aşama 1-4 koşullu derleme kontrolleri başarıyla geçti."

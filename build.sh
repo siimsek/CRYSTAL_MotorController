@@ -8,7 +8,7 @@ elif command -v platformio >/dev/null 2>&1; then
   PIO=platformio
 else
   if ! command -v python3 >/dev/null 2>&1; then
-    echo "HATA: python3 bulunamadi. sudo apt install python3 python3-venv" >&2
+echo "HATA: python3 bulunamadı. sudo apt install python3 python3-venv" >&2
     exit 1
   fi
   if [ ! -x .venv/bin/pio ]; then
@@ -27,7 +27,7 @@ if [ -n "$U8SRC" ]; then
   cp -f "$U8SRC"/*.c "$U8SRC"/*.h lib/u8g2/src/
 fi
 
-test -f lib/u8g2/src/u8g2.h || { echo "HATA: U8g2 C kutuphanesi hazirlanamadi" >&2; exit 1; }
+test -f lib/u8g2/src/u8g2.h || { echo "HATA: U8g2 C kütüphanesi hazırlanamadı" >&2; exit 1; }
 rm -rf .pio/build
 "$PIO" run -e motor_kontrol
 mkdir -p firmware
@@ -35,4 +35,4 @@ cp .pio/build/motor_kontrol/firmware.elf firmware/MotorKontrol.elf
 cp .pio/build/motor_kontrol/firmware.bin firmware/MotorKontrol.bin
 [ ! -f .pio/build/motor_kontrol/firmware.hex ] || cp .pio/build/motor_kontrol/firmware.hex firmware/MotorKontrol.hex
 "$PIO" run -e motor_kontrol -t size
-printf '\nHazir: firmware/MotorKontrol.elf ve firmware/MotorKontrol.bin\n'
+printf '\nHazır: firmware/MotorKontrol.elf ve firmware/MotorKontrol.bin\n'
