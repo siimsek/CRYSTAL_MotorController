@@ -17,7 +17,7 @@
 #define TEMP_MAX_X10                                1065     /* 106.5C */
 #define TEMP_DEFAULT_X10                            710      /* 71.0C */
 #define TEMP_FINE_STEP_X10                          10       /* 1.0C */
-#define TEMP_ALERT_HYST_X10                         10       /* 1.0C */
+#define TEMP_ALERT_HYST_X10                         10       /* 1.0C - KULLANILMIYOR: sicaklik alarmi esigin %80'ine dusunce temizlenir */
 
 #define CURRENT_MIN_X100                            78U      /* 780mA (0.78A) */
 #define CURRENT_MAX_X100                            233U     /* 2330mA (2.33A) */

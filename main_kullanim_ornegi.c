@@ -48,9 +48,11 @@ int main(void)
 /*
  * --- EXTI: projede TEK HAL_GPIO_EXTI_Callback ---
  *
- * Varsayilan: motor_ui.c icinde MOTOR_UI_DEFINE_HAL_EXTI_CALLBACK 1 iken
- * callback MotorUI_ButtonIRQ() cagirir. Baska dosyada AYNI fonksiyonu
- * tanimlamayin (link hatasi).
+ * Varsayilan (bu depo): MOTOR_UI_DEFINE_HAL_EXTI_CALLBACK 0'dir; tek
+ * callback src/main.c icinde tanimlanir ve MotorUI_ButtonIRQ() cagirir.
+ * Kendi CubeMX projenizde baska bir yerde HAL_GPIO_EXTI_Callback
+ * tanimlamiyorsaniz motor_ui_config.h'de 1 yapin (motor_ui.c callback'i
+ * devreye girer). Baska dosyada AYNI fonksiyonu tanimlamayin (link hatasi).
  *
  * CubeMX stm32f0xx_it.c (degistirmeyin; HAL zaten cagirir):
  *   void EXTI0_1_IRQHandler(void)  { HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_0);  } // PA0 DOWN

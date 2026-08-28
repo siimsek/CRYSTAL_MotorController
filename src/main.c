@@ -179,7 +179,7 @@ void I2C1_IRQHandler(void)
 
 /* Tum buton EXTI olaylari buraya gelir. MotorUI_Task() polling yaptiginden
  * bu callback zorunlu degil, ancak AGENTS.md Kural 2 geregi tek callback
- * kurali saglanmis olur. Motor_ui.c MOTOR_UI_DEFINE_HAL_EXTI_CALLBACK=0
+ * kurali saglanmis olur. motor_ui.c MOTOR_UI_DEFINE_HAL_EXTI_CALLBACK=0
  * ile kendi callback'ini derlemez; bu yuzden burada tanimliyoruz. */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {

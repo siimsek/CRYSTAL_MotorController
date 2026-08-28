@@ -61,7 +61,7 @@ Bu bellenim, **STM32F030C8T6** mikrodenetleyicisi üzerinde çalışan, endüstr
 1. Cihaza güç verildiğinde **3 saniye** boyunca logolu açılış ekranı (Splash Screen) görüntülenir.
 2. Açılış sonrasında cihaz otomatik olarak **Ana Ekrana** geçer.
 3. Bu kart motor starter değildir; ana sistemin güç yolunda **ara kesicidir**. NO röle açılışta (ACS sıfır + ~1 s) kapanır ve alarm gelene kadar kapalı kalır. Motoru ana sistemin kendi modları çalıştırır.
-4. İlk **1 saniye** ACS 0A kalibrasyonu ve röle güvenli başlangıçtır (`RELAY_SAFE_STARTUP_MS`). İlk **5 saniye** (`ALERT_UI_ARM_MS`) boyunca alarm, NTC/ACS ERROR ve güç kesme yoktur; ~1 s sonra yol kapanır. 5 s sonra ERROR/alarm yolu kesebilir.
+4. İlk **1 saniye** ACS varlık/aralık kontrolü ve röle güvenli başlangıçtır (`RELAY_SAFE_STARTUP_MS`). İlk **5 saniye** (`ALERT_UI_ARM_MS`) boyunca alarm, NTC/ACS ERROR ve güç kesme yoktur; ~1 s sonra yol kapanır. 5 s sonra ERROR/alarm yolu kesebilir.
 
 ### 3.2. Ana Ekran Kullanımı
 - **Ekran Görünümü:** Sol sütunda anlık ölçülen sıcaklık (°C), sağ sütunda anlık ölçülen akım (A) görüntülenir.
@@ -80,7 +80,7 @@ Bu bellenim, **STM32F030C8T6** mikrodenetleyicisi üzerinde çalışan, endüstr
 7. *İptal Etme:* Herhangi bir aşamada `BOOT` butonuna basarak işlemi kaydetmeden iptal edebilirsiniz.
 
 ### 3.4. Fabrika Ayarlarına Dönüş
-- **Yöntem 1 (Menü Üzerinden):** `AYARLARI` -> `Fabrika Ayarlari` -> `OK` -> Çift Onay adımlarını uygulayın.
+- **Yöntem 1 (Menü Üzerinden):** `AYARLARI` -> `Varsayilan` -> `OK` -> Çift Onay adımlarını uygulayın.
 - **Yöntem 2 (Tuş Kısayolu):** Cihaz hangi ekranda olursa olsun `BOOT` ve `OK` butonlarına aynı anda **10 saniye** boyunca basılı tutun. Cihaz anında varsayılan değerlere (`71.0 °C`, `1550 mA`) sıfırlanır ve EEPROM’a yazılır.
 
 ### 3.5. Alarm Durumunda Yapılacaklar
@@ -119,7 +119,7 @@ Sistemde 5 dakika boyunca tuş aktivitesi gerçekleşmezse ve aktif alarm yoksa 
 Ölçülen değerlerin alarm sınırında dalgalanması sonucu röle kontaklarının yüksek frekansta açılıp kapanmasını önlemek amacıyla, röle durum değiştirdikten sonra yeniden kapanması (güç vermesi) için en az **3 saniye** (`RELAY_CHATTER_GUARD_MS = 3000U`) beklenmesi zorunludur. Tehlike anında rölenin kesilmesi ise **0 ms** gecikmeyle derhal gerçekleşir.
 
 ### 5.2. Ara Kesici ve Açılış
-GPIO/init anında röle bobini enerjisizdir (NO kontak açık). ACS 0A kalibrasyonu bu pencerede alınır. `RELAY_SAFE_STARTUP_MS` (1 s) sonrası bobin enerjilenir, kontak kapanır (ilk 5 s sensör geçerliliği aranmaz). `ALERT_UI_ARM_MS` (5 s) dolunca alarm veya sensör hatası kontakı derhal açar. Akım/sensör alarmı kalkınca yol kendiliğinden kapanmaz; sıcaklık alarmında ölçüm eşiğin %20 altına inince yol yeniden kapanabilir.
+GPIO/init anında röle bobini enerjisizdir (NO kontak açık). ACS varlık/aralık kontrolü bu pencerede yapılır. `RELAY_SAFE_STARTUP_MS` (1 s) sonrası bobin enerjilenir, kontak kapanır (ilk 5 s sensör geçerliliği aranmaz). `ALERT_UI_ARM_MS` (5 s) dolunca alarm veya sensör hatası kontakı derhal açar. Akım/sensör alarmı kalkınca yol kendiliğinden kapanmaz; sıcaklık alarmında ölçüm eşiğin %20 altına inince yol yeniden kapanabilir.
 
 ### 5.3. İlk Kalkış Akımı Bastırma (Startup Inrush Suppression)
 Sistem açılışını takip eden ilk **5 saniye** (`ALERT_UI_ARM_MS = 5000U`) boyunca alarm, NTC/ACS ERROR ve röle kesme yoktur. Röle ~1 s’de kapanabilir. 5 s sonra ERROR veya eşik aşımı yolu keser ve (akım/sensör) isteği latçler.
@@ -182,6 +182,9 @@ bash tools/test_acs_pp_rms.sh
 
 # Röle interlock, ADC pencere ve ISR flag host testi
 bash tools/test_safety_host.sh
+
+# Stage 1/2 simüle deger ve alarm geçiş host testi
+bash tools/test_stage2_sim.sh
 
 # Tüm yerel host doğrulamaları (tek komut)
 bash tools/verify_host.sh

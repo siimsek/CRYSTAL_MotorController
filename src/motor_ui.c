@@ -153,9 +153,11 @@ static bool g_display_dirty = true;
 
 static bool g_motor_run_requested = (MOTOR_RUN_REQUEST_DEFAULT != 0U);
 static bool g_motor_power_permitted = false;
+#if MOTOR_UI_STAGE >= 3U
 static bool g_sensors_valid = false;
 static uint8_t g_sensor_valid_count = 0U;
 static uint8_t g_sensor_invalid_count = 0U;
+#endif
 
 static uint32_t g_init_tick = 0U;
 static uint32_t g_last_sensor_tick = 0U;
@@ -443,6 +445,7 @@ static void blank_numeric_characters(char *buffer)
  *                                                                           *
  * ========================================================================= */
 
+#if MOTOR_UI_STAGE >= 3U && EEPROM_ENABLE
 static uint16_t crc16_ccitt(const uint8_t *data, uint16_t length)
 {
     uint16_t crc = 0xFFFFU;
@@ -462,7 +465,6 @@ static uint16_t crc16_ccitt(const uint8_t *data, uint16_t length)
     return crc;
 }
 
-#if MOTOR_UI_STAGE >= 3U && EEPROM_ENABLE
 static bool eeprom_read_bytes(uint16_t address, uint8_t *data, uint16_t length)
 {
     return HAL_I2C_Mem_Read(&MOTOR_UI_EEPROM_I2C_HANDLE,
@@ -718,16 +720,6 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
     if (hi2c == &MOTOR_UI_EEPROM_I2C_HANDLE) {
         g_settings_i2c_error = true;
     }
-}
-#else
-static bool settings_load(void)
-{
-    return false;
-}
-
-static bool settings_save(void)
-{
-    return false;
 }
 #endif
 
@@ -2406,6 +2398,8 @@ void MotorUI_Init(void)
     }
     (void)HAL_ADCEx_Calibration_Start(&MOTOR_UI_ADC_HANDLE);
     HAL_Delay(100U);
+    /* Bilgi: bu sonuc ilk sensors_update() cagrisinda p-p pencere tabanli
+     * gecerlilikle yeniden yazilir; yalniz acilis bilgilendirmesidir. */
     g_current_sensor_valid = acs_validate_presence();
     sensors_update();
     /* Ilk pencere burada baslar; ilk 200ms sensor cevriminde sonucu tuketilir. */
@@ -2508,7 +2502,7 @@ void MotorUI_Task(void)
     }
 
 #if MOTOR_UI_STAGE >= 3U
-    /* Ekran yenileme: ana ekran ve alarm ekrani 5s'de 1 deger gunceller.
+    /* Ekran yenileme: ana ekran ve alarm ekrani 1s'de 1 deger gunceller.
      * Alarm, buton, blink olaylari aninda g_display_dirty=true yapar
      * bu nedenle gecikme yalnizca "sessiz" deger degisimlerini etkiler. */
     if ((now - g_last_display_tick) >= DISPLAY_VALUE_UPDATE_MS) {
@@ -2554,6 +2548,15 @@ void MotorUI_SetSimulatedValues(int16_t temperature_x10,
     if (current_x100 > CURRENT_MAX_X100) {
         current_x100 = CURRENT_MAX_X100;
     }
+
+#if MOTOR_UI_STAGE < 3U
+    /* Stage 1/2'de gercek sensor yok: simule degerler gecerli sayilir.
+     * Yoksa formatlayicilar "---"/"ERROR" gosterir ve simule alarm
+     * hic tetiklenmez (sensor gecerlilik bayraklari yalniz Stage >= 3
+     * sensors_update() icinde set edilir). */
+    g_temp_sensor_valid = true;
+    g_current_sensor_valid = true;
+#endif
 
     measured_changed =
         (g_measured_temp_x10 != temperature_x10) ||
