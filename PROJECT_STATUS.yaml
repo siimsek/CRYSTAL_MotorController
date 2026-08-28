@@ -42,6 +42,7 @@ confirmed_hardware:
     gpio: PA1
     adc_channel: ADC_CHANNEL_1
     divider_ratio_confirmed: true   # bolucu yok; ACS VIOUT dogrudan PA1; 0A = 2.675V olculdu
+    adc_input_overvoltage_protection: not_confirmed  # 5V ACS cikisi 3.3V ADC'ye dogrudan; yuk/darbe olcumu bekliyor
     zero_sensor_mv: 2675.0
     conversion_accuracy_confirmed: false
     zero_policy: startup_presence_validation_only
@@ -59,7 +60,7 @@ confirmed_hardware:
     names: [OK, DOWN, BOOT, UP]
     active_level: HIGH
     pull: external_10k_pulldown
-    gpio_mode: GPIO_PULLDOWN  # Internal pull-down used; pins configured as GPIO_MODE_INPUT in main.c
+    gpio_mode: GPIO_MODE_IT_RISING + GPIO_PULLDOWN  # EXTI rising-edge; debounce/hold MotorUI_Task() polling'de
     ok: { gpio: PC14, exti: EXTI14, schema_name: exti14_ok }
     down: { gpio: PA0, exti: EXTI0, schema_name: exti0_down }
     boot: { gpio: PA6, exti: EXTI6, schema_name: exti6_boot, is_boot0: false, confirmed_hardware: true }
@@ -149,11 +150,15 @@ confirmed:
 
 unknowns:
   - ACS712 mutlak dogruluk: 100mV/A p-p/sinus-RMS referansi pens ampermetreyle baska akimlarda dogrulanmali
+  - ACS712 PA1 korumasi: pompanin nominal/kalkis/sikisma akimi ve PA1 tepe gerilimi olculmeli; gerekirse bolucu/koruma eklenmeli
+  - NTC yonu/dogrulugu: mevcut NTC_IS_CONNECTED_TO_GND=0 formulu korunuyor; bilinen sicaklikta PA2 ADC ve referans termometre kaydi bekliyor
   - EEPROM parca etiketi: 24C02/24C04 uyumlu 0x50 8B; silkscreen okunmadi
   - Pump nominal / startup / stall current degerleri (pompa ozellik belgesi gerekli)
 
 next_actions:
   - ACS712: 100mV/A p-p/sinus-RMS ile baska yuklerde pens karsilastirmasi
+  - ACS712: pompa yukteyken PA1 gerilimini olc; STM32 ADC sinirini asiyorsa uygun bolucu/koruma ekle ve katsayilari olcume gore guncelle
+  - NTC: bilinen sicaklikta PA2 ADC degerini referans termometreyle kaydet
   - Role acilis kapanisi: guc verince ~1s sonra kontak kapali, alarmda acik — kartta dogrula
   - Pompa akim profilini cikart (nominal, kalkis, sikisma) ve CURRENT_MAX_X100'u ayarla
   - EEPROM etiketi oku (model numarasini PROJECT_STATUS'a islet)

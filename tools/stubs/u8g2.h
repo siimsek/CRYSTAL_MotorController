@@ -4,6 +4,7 @@
 typedef struct { int dummy; } u8g2_t;
 typedef struct { int dummy; } u8x8_t;
 #define U8G2_R0 0
+#define U8G2_DRAW_ALL 0x0FU
 #define U8X8_MSG_BYTE_INIT 1
 #define U8X8_MSG_BYTE_SET_DC 2
 #define U8X8_MSG_BYTE_START_TRANSFER 3
@@ -35,6 +36,9 @@ void u8g2_SetFont(u8g2_t*,const uint8_t*);
 void u8g2_DrawUTF8(u8g2_t*,uint8_t,uint8_t,const char*);
 void u8g2_DrawStr(u8g2_t*,uint8_t,uint8_t,const char*);
 void u8g2_DrawLine(u8g2_t*,uint8_t,uint8_t,uint8_t,uint8_t);
+void u8g2_DrawPixel(u8g2_t*,uint8_t,uint8_t);
+void u8g2_DrawCircle(u8g2_t*,uint8_t,uint8_t,uint8_t,uint8_t);
+void u8g2_DrawDisc(u8g2_t*,uint8_t,uint8_t,uint8_t,uint8_t);
 void u8g2_DrawXBM(u8g2_t*,uint8_t,uint8_t,uint8_t,uint8_t,const uint8_t*);
 uint8_t u8g2_GetUTF8Width(u8g2_t*,const char*);
 uint8_t u8x8_GetI2CAddress(u8x8_t*);

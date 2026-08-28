@@ -49,6 +49,7 @@ void u8g2_SetFont(u8g2_t *u8g2, const uint8_t *font) { (void)u8g2; (void)font; }
 void u8g2_DrawUTF8(u8g2_t *u8g2, uint8_t x, uint8_t y, const char *s) { (void)u8g2; (void)x; (void)y; (void)s; }
 void u8g2_DrawStr(u8g2_t *u8g2, uint8_t x, uint8_t y, const char *s) { (void)u8g2; (void)x; (void)y; (void)s; }
 void u8g2_DrawLine(u8g2_t *u8g2, uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2) { (void)u8g2; (void)x1; (void)y1; (void)x2; (void)y2; }
+void u8g2_DrawPixel(u8g2_t *u8g2, uint8_t x, uint8_t y) { (void)u8g2; (void)x; (void)y; }
 void u8g2_DrawXBM(u8g2_t *u8g2, uint8_t x, uint8_t y, uint8_t w, uint8_t h, const uint8_t *bits) { (void)u8g2; (void)x; (void)y; (void)w; (void)h; (void)bits; }
 uint8_t u8g2_GetUTF8Width(u8g2_t *u8g2, const char *s) { (void)u8g2; (void)s; return 0U; }
 uint8_t u8x8_GetI2CAddress(u8x8_t *u8x8) { (void)u8x8; return 0U; }

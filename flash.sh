@@ -34,9 +34,8 @@ rm -rf .pio/build firmware
 ./build.sh
 test -f "$BIN" || die "$BIN uretilemedi"
 
-echo "=== 2/3: Otomatik Dogrulama Kontrolleri (Stage 1-4 & Arayuz Kilidi) ==="
-./tools/check_all_stages.sh
-python3 tools/check_ui_lock.py
+echo "=== 2/3: Otomatik Dogrulama Kontrolleri (Host + Stage 1-4 + Arayuz Kilidi) ==="
+./tools/verify_host.sh
 
 echo "=== 3/3: Programci tespiti ve yukleme ==="
 HAS_V2=0

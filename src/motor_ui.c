@@ -1118,6 +1118,48 @@ static void draw_splash_screen(void)
                  acilis_bitmap_bits);
 }
 
+/* Dynamic values use their rendered width, so digit-count changes do not
+ * shift labels or readings away from the visual centre. */
+static uint8_t column_centered_x(const char *text,
+                                 uint8_t col_left,
+                                 uint8_t col_right)
+{
+    const uint8_t width = u8g2_GetUTF8Width(&g_u8g2, text);
+    const uint16_t midpoint = ((uint16_t)col_left + (uint16_t)col_right) / 2U;
+    int16_t x = (int16_t)midpoint - (int16_t)(width / 2U);
+
+    if (x < (int16_t)col_left) return col_left;
+    if ((x + (int16_t)width) > ((int16_t)col_right + 1)) {
+        return (uint8_t)((int16_t)col_right - (int16_t)width + 1);
+    }
+    return (uint8_t)x;
+}
+
+/* XBM verisini saklamadan, uyarı ikonlarını ekranda hafifçe büyütür. */
+static void draw_scaled_xbm(uint8_t x,
+                            uint8_t y,
+                            uint8_t width,
+                            uint8_t height,
+                            uint8_t source_width,
+                            uint8_t source_height,
+                            const uint8_t *bits)
+{
+    uint8_t output_y;
+    const uint8_t source_stride = (uint8_t)((source_width + 7U) / 8U);
+
+    for (output_y = 0U; output_y < height; ++output_y) {
+        uint8_t output_x;
+        const uint8_t source_y = (uint8_t)(((uint16_t)output_y * source_height) / height);
+        for (output_x = 0U; output_x < width; ++output_x) {
+            const uint8_t source_x = (uint8_t)(((uint16_t)output_x * source_width) / width);
+            const uint8_t byte = bits[(uint16_t)source_y * source_stride + (source_x / 8U)];
+            if ((byte & (uint8_t)(1U << (source_x % 8U))) != 0U) {
+                u8g2_DrawPixel(&g_u8g2, (uint8_t)(x + output_x), (uint8_t)(y + output_y));
+            }
+        }
+    }
+}
+
 static void draw_main_screen(void)
 {
     char temp_text[12];
@@ -1133,19 +1175,19 @@ static void draw_main_screen(void)
                                     false);
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, 47U, 9U, "CRYSTAL");
+    u8g2_DrawStr(&g_u8g2, column_centered_x("CRYSTAL", 0U, 127U), 9U, "CRYSTAL");
     u8g2_DrawLine(&g_u8g2, 0U, 13U, 127U, 13U);
     u8g2_DrawLine(&g_u8g2, 65U, 14U, 65U, 64U);
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawUTF8(&g_u8g2, 9U, 32U, "Sicaklik");
+    u8g2_DrawUTF8(&g_u8g2, column_centered_x("Sicaklik", 0U, 65U), 32U, "Sicaklik");
     u8g2_SetFont(&g_u8g2, u8g2_font_9x15_tf);
-    u8g2_DrawUTF8(&g_u8g2, 4U, 52U, temp_text);
+    u8g2_DrawUTF8(&g_u8g2, column_centered_x(temp_text, 0U, 65U), 52U, temp_text);
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawUTF8(&g_u8g2, 88U, 32U, "Akim");
+    u8g2_DrawUTF8(&g_u8g2, column_centered_x("Akim", 65U, 127U) + 3U, 32U, "Akim");
     u8g2_SetFont(&g_u8g2, u8g2_font_9x15_tf);
-    u8g2_DrawUTF8(&g_u8g2, 68U, 52U, current_text);
+    u8g2_DrawUTF8(&g_u8g2, column_centered_x(current_text, 65U, 127U) + 3U, 52U, current_text);
 }
 
 static void draw_temp_alert_screen(void)
@@ -1157,25 +1199,25 @@ static void draw_temp_alert_screen(void)
     format_current_for_display(g_display_current_x100, current_text, sizeof(current_text), false);
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, 47U, 9U, "CRYSTAL");
+    u8g2_DrawStr(&g_u8g2, column_centered_x("CRYSTAL", 0U, 127U), 9U, "CRYSTAL");
     u8g2_DrawLine(&g_u8g2, 0U, 13U, 127U, 13U);
     u8g2_DrawLine(&g_u8g2, 65U, 14U, 65U, 64U);
 
     /* Draw Current (Normal) */
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawUTF8(&g_u8g2, 88U, 32U, "Akim");
+    u8g2_DrawUTF8(&g_u8g2, column_centered_x("Akim", 65U, 127U) + 3U, 32U, "Akim");
     u8g2_SetFont(&g_u8g2, u8g2_font_9x15_tf);
-    u8g2_DrawUTF8(&g_u8g2, 68U, 52U, current_text);
+    u8g2_DrawUTF8(&g_u8g2, column_centered_x(current_text, 65U, 127U) + 3U, 52U, current_text);
 
     /* Draw Temp (Alerting) */
     if (g_blink_on) {
         /* tempalert_bits is 30x33 */
-        u8g2_DrawXBM(&g_u8g2, 16U, 34U, 30U, 33U, tempalert_bits);
+        draw_scaled_xbm(11U, 15U, 43U, 48U, 30U, 33U, tempalert_bits);
     } else {
         u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-        u8g2_DrawUTF8(&g_u8g2, 7U, 29U, "Sicaklik");
+        u8g2_DrawUTF8(&g_u8g2, column_centered_x("Sicaklik", 0U, 65U), 32U, "Sicaklik");
         u8g2_SetFont(&g_u8g2, u8g2_font_9x15_tf);
-        u8g2_DrawUTF8(&g_u8g2, 16U, 40U, temp_text);
+        u8g2_DrawUTF8(&g_u8g2, column_centered_x(temp_text, 0U, 65U), 52U, temp_text);
     }
 }
 
@@ -1188,25 +1230,25 @@ static void draw_current_alert_screen(void)
     format_current_for_display(g_display_current_x100, current_text, sizeof(current_text), false);
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, 47U, 9U, "CRYSTAL");
+    u8g2_DrawStr(&g_u8g2, column_centered_x("CRYSTAL", 0U, 127U), 9U, "CRYSTAL");
     u8g2_DrawLine(&g_u8g2, 0U, 13U, 127U, 13U);
     u8g2_DrawLine(&g_u8g2, 68U, 14U, 68U, 64U);
 
     /* Draw Temp (Normal) */
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawUTF8(&g_u8g2, 9U, 32U, "Sicaklik");
+    u8g2_DrawUTF8(&g_u8g2, column_centered_x("Sicaklik", 0U, 65U), 32U, "Sicaklik");
     u8g2_SetFont(&g_u8g2, u8g2_font_9x15_tf);
-    u8g2_DrawUTF8(&g_u8g2, 4U, 52U, temp_text);
+    u8g2_DrawUTF8(&g_u8g2, column_centered_x(temp_text, 0U, 65U), 52U, temp_text);
 
     /* Draw Current (Alerting) */
     if (g_blink_on) {
         /* currentalert_bits is 24x24 */
-        u8g2_DrawXBM(&g_u8g2, 89U, 38U, 24U, 24U, currentalert_bits);
+        draw_scaled_xbm(79U, 21U, 36U, 36U, 24U, 24U, currentalert_bits);
     } else {
         u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-        u8g2_DrawUTF8(&g_u8g2, 89U, 28U, "Akim");
+        u8g2_DrawUTF8(&g_u8g2, column_centered_x("Akim", 65U, 127U) + 3U, 32U, "Akim");
         u8g2_SetFont(&g_u8g2, u8g2_font_9x15_tf);
-        u8g2_DrawUTF8(&g_u8g2, 86U, 38U, current_text);
+        u8g2_DrawUTF8(&g_u8g2, column_centered_x(current_text, 65U, 127U) + 3U, 52U, current_text);
     }
 }
 
@@ -1219,28 +1261,28 @@ static void draw_both_alert_screen(void)
     format_current_for_display(g_display_current_x100, current_text, sizeof(current_text), false);
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, 47U, 9U, "CRYSTAL");
+    u8g2_DrawStr(&g_u8g2, column_centered_x("CRYSTAL", 0U, 127U), 9U, "CRYSTAL");
     u8g2_DrawLine(&g_u8g2, 0U, 13U, 127U, 13U);
     u8g2_DrawLine(&g_u8g2, 68U, 14U, 68U, 64U);
 
     /* Draw Temp (Alerting) */
     if (g_blink_on) {
-        u8g2_DrawXBM(&g_u8g2, 18U, 33U, 30U, 33U, tempalert_bits);
+        draw_scaled_xbm(11U, 15U, 43U, 48U, 30U, 33U, tempalert_bits);
     } else {
         u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-        u8g2_DrawUTF8(&g_u8g2, 9U, 28U, "Sicaklik");
+        u8g2_DrawUTF8(&g_u8g2, column_centered_x("Sicaklik", 0U, 65U), 32U, "Sicaklik");
         u8g2_SetFont(&g_u8g2, u8g2_font_9x15_tf);
-        u8g2_DrawUTF8(&g_u8g2, 18U, 39U, temp_text);
+        u8g2_DrawUTF8(&g_u8g2, column_centered_x(temp_text, 0U, 65U), 52U, temp_text);
     }
 
     /* Draw Current (Alerting) */
     if (g_blink_on) {
-        u8g2_DrawXBM(&g_u8g2, 89U, 38U, 24U, 24U, currentalert_bits);
+        draw_scaled_xbm(79U, 21U, 36U, 36U, 24U, 24U, currentalert_bits);
     } else {
         u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-        u8g2_DrawUTF8(&g_u8g2, 89U, 28U, "Akim");
+        u8g2_DrawUTF8(&g_u8g2, column_centered_x("Akim", 65U, 127U) + 3U, 32U, "Akim");
         u8g2_SetFont(&g_u8g2, u8g2_font_9x15_tf);
-        u8g2_DrawUTF8(&g_u8g2, 86U, 38U, current_text);
+        u8g2_DrawUTF8(&g_u8g2, column_centered_x(current_text, 65U, 127U) + 3U, 52U, current_text);
     }
 }
 
@@ -1260,7 +1302,7 @@ static void draw_settings_screen(void)
                                    false);
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, 46U, 9U, "AYARLAR");
+    u8g2_DrawStr(&g_u8g2, column_centered_x("AYARLAR", 0U, 127U), 9U, "AYARLAR");
     u8g2_DrawLine(&g_u8g2, 0U, 13U, 127U, 13U);
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
     u8g2_DrawUTF8(&g_u8g2, 27U, 24U, "Sicaklik");
@@ -1290,18 +1332,18 @@ static void draw_temp_set_screen(void)
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
     u8g2_DrawStr(&g_u8g2,
-                  25U,
+                  column_centered_x(title, 0U, 127U),
                   9U,
                   title);
     u8g2_DrawLine(&g_u8g2, 0U, 13U, 127U, 13U);
     u8g2_SetFont(&g_u8g2, u8g2_font_9x15_tf);
     u8g2_DrawUTF8(&g_u8g2,
-                  34U,
+                  column_centered_x(value_text, 0U, 127U),
                   36U,
                   value_text);
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
     u8g2_DrawUTF8(&g_u8g2,
-                  19U,
+                  column_centered_x(hint, 0U, 127U),
                   57U,
                   hint);
 }
@@ -1319,18 +1361,18 @@ static void draw_current_set_screen(void)
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
     u8g2_DrawStr(&g_u8g2,
-                  34U,
+                  column_centered_x(title, 0U, 127U),
                   9U,
                   title);
     u8g2_DrawLine(&g_u8g2, 0U, 13U, 127U, 13U);
     u8g2_SetFont(&g_u8g2, u8g2_font_9x15_tf);
     u8g2_DrawUTF8(&g_u8g2,
-                  28U,
+                  column_centered_x(value_text, 0U, 127U),
                   36U,
                   value_text);
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
     u8g2_DrawUTF8(&g_u8g2,
-                  19U,
+                  column_centered_x(hint, 0U, 127U),
                   57U,
                   hint);
 }
@@ -1340,9 +1382,9 @@ static void draw_default_confirm_screen(void)
     uint8_t arrow_y = (g_confirm_selection == CONFIRM_YES) ? 32U : 47U;
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, 5U, 11U, "VARSAYILAN DEGERLERI");
+    u8g2_DrawStr(&g_u8g2, column_centered_x("VARSAYILAN DEGERLERI", 0U, 127U), 11U, "VARSAYILAN DEGERLERI");
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, 10U, 24U, "ONAYLIYOR MUSUNUZ?");
+    u8g2_DrawStr(&g_u8g2, column_centered_x("ONAYLIYOR MUSUNUZ?", 0U, 127U), 24U, "ONAYLIYOR MUSUNUZ?");
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
     u8g2_DrawStr(&g_u8g2, 29U, 40U, "EVET");
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
@@ -1355,9 +1397,9 @@ static void draw_confirm_1_screen(void)
     uint8_t arrow_y = (g_confirm_selection == CONFIRM_YES) ? 32U : 47U;
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawUTF8(&g_u8g2, 22U, 11U, "DEGISIKLIKLERI");
+    u8g2_DrawUTF8(&g_u8g2, column_centered_x("DEGISIKLIKLERI", 0U, 127U), 11U, "DEGISIKLIKLERI");
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&g_u8g2, 10U, 24U, "ONAYLIYOR MUSUNUZ?");
+    u8g2_DrawStr(&g_u8g2, column_centered_x("ONAYLIYOR MUSUNUZ?", 0U, 127U), 24U, "ONAYLIYOR MUSUNUZ?");
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
     u8g2_DrawStr(&g_u8g2, 29U, 40U, "EVET");
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
@@ -1370,16 +1412,27 @@ static void draw_confirm_2_screen(void)
     uint8_t arrow_y = (g_confirm_selection == CONFIRM_YES) ? 32U : 47U;
 
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawUTF8(&g_u8g2, 16U, 12U, "DEGISIKLIKLERDEN");
+    u8g2_DrawUTF8(&g_u8g2, column_centered_x("DEGISIKLIKLERDEN", 0U, 127U), 12U, "DEGISIKLIKLERDEN");
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
     u8g2_DrawStr(&g_u8g2, 29U, 40U, "EVET");
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
     u8g2_DrawStr(&g_u8g2, 29U, 55U, "HAYIR");
     u8g2_DrawXBM(&g_u8g2, 5U, arrow_y, 17U, 7U, arrow_bits);
     u8g2_SetFont(&g_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawUTF8(&g_u8g2, 25U, 24U, "EMIN MISINIZ?");
+    u8g2_DrawUTF8(&g_u8g2, column_centered_x("EMIN MISINIZ?", 0U, 127U), 24U, "EMIN MISINIZ?");
 }
 
+static void draw_relay_power_indicator(void)
+{
+#if MOTOR_UI_STAGE >= 4U
+    /* Right-top: hollow = motor path cut, filled = relay permits power. */
+    if (g_motor_power_permitted) {
+        u8g2_DrawDisc(&g_u8g2, 123U, 5U, 3U, U8G2_DRAW_ALL);
+    } else {
+        u8g2_DrawCircle(&g_u8g2, 123U, 5U, 3U, U8G2_DRAW_ALL);
+    }
+#endif
+}
 
 static void draw_screen_contents(void)
 {
@@ -1420,6 +1473,13 @@ static void draw_screen_contents(void)
     default:
         break;
     }
+
+    if ((g_screen != UI_SCREEN_SPLASH) &&
+        (g_screen != UI_SCREEN_DEFAULT_CONFIRM) &&
+        (g_screen != UI_SCREEN_CONFIRM_1) &&
+        (g_screen != UI_SCREEN_CONFIRM_2)) {
+        draw_relay_power_indicator();
+    }
 }
 
 static void render_display(void)
@@ -1430,6 +1490,18 @@ static void render_display(void)
         draw_screen_contents();
     } while (u8g2_NextPage(&g_u8g2) != 0U);
     g_display_dirty = false;
+}
+
+/* OLED page aktarimi I2C uzerinde bloklayicidir. ACS p-p penceresi acikken
+ * g_display_dirty korunur; pencere kapandiginda ayni cizim sonraki task'ta
+ * yapilir. Boylece 40 ms pencerede yeterli ADC ornegi toplanir. */
+static bool display_render_is_deferred(void)
+{
+#if MOTOR_UI_STAGE >= 3U
+    return g_acs_pp_window.active;
+#else
+    return false;
+#endif
 }
 
 static void cancel_edit_and_confirmation(void)
@@ -1635,6 +1707,8 @@ static bool g_relay_has_closed = false;
 
 static void relay_apply_motor_permission(bool permitted)
 {
+    const bool state_changed = (g_motor_power_permitted != permitted);
+
     /* Bobin ULN2003 üzerinden sürülür; NO kontak polaritesi MOTOR_POWER_* ile.
      * izinli = kontak kapali (guc yolu), kesik = kontak acik. */
     HAL_GPIO_WritePin(MOTOR_UI_RELAY_GPIO_Port,
@@ -1642,6 +1716,9 @@ static void relay_apply_motor_permission(bool permitted)
                       permitted ? MOTOR_POWER_ALLOW_RELAY_LEVEL
                                 : MOTOR_POWER_CUT_RELAY_LEVEL);
     g_motor_power_permitted = permitted;
+    if (state_changed) {
+        g_display_dirty = true;
+    }
     g_last_relay_toggle_tick = HAL_GetTick();
     if (permitted) {
         g_relay_has_closed = true;
@@ -2525,7 +2602,7 @@ void MotorUI_Task(void)
         }
     }
 
-    if (g_display_dirty) {
+    if (g_display_dirty && !display_render_is_deferred()) {
         render_display();
     }
 }

@@ -17,7 +17,7 @@
 #include "motor_ui.h"
 /* USER CODE END Includes */
 
-/*
+#if 0
 int main(void)
 {
     HAL_Init();
@@ -43,7 +43,7 @@ int main(void)
         // USER CODE END WHILE
     }
 }
-*/
+#endif
 
 /*
  * --- EXTI: projede TEK HAL_GPIO_EXTI_Callback ---

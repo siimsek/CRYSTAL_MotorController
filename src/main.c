@@ -1,4 +1,5 @@
 #include "main.h"
+#include "motor_ui_config.h"
 #include "motor_ui.h"
 
 ADC_HandleTypeDef hadc;
@@ -63,7 +64,10 @@ static void MX_GPIO_Init(void)
 
     /* Fail-safe: röle, buzzer, alarm çıkışları ve LED kapalı. */
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8 | GPIO_PIN_12, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0 | GPIO_PIN_12 | GPIO_PIN_15, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0 | GPIO_PIN_15, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(MOTOR_UI_RELAY_GPIO_Port,
+                      MOTOR_UI_RELAY_Pin,
+                      MOTOR_POWER_CUT_RELAY_LEVEL);
 
     gpio.Pin = GPIO_PIN_8 | GPIO_PIN_12;
     gpio.Mode = GPIO_MODE_OUTPUT_PP;
@@ -71,8 +75,11 @@ static void MX_GPIO_Init(void)
     gpio.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(GPIOA, &gpio);
 
-    gpio.Pin = GPIO_PIN_0 | GPIO_PIN_12 | GPIO_PIN_15;
+    gpio.Pin = GPIO_PIN_0 | GPIO_PIN_15;
     HAL_GPIO_Init(GPIOB, &gpio);
+
+    gpio.Pin = MOTOR_UI_RELAY_Pin;
+    HAL_GPIO_Init(MOTOR_UI_RELAY_GPIO_Port, &gpio);
 
     /* ADC: PA1 ACS712, PA2 NTC. */
     gpio.Pin = GPIO_PIN_1 | GPIO_PIN_2;
@@ -95,14 +102,18 @@ static void MX_GPIO_Init(void)
 
     /* Butonlar: DOWN PA0 / BOOT PA6 / UP PA7 (GPIOA) ve OK PC14 (GPIOC). Active HIGH (PULLDOWN). */
     gpio.Pin = GPIO_PIN_0 | GPIO_PIN_6 | GPIO_PIN_7;
-    gpio.Mode = GPIO_MODE_INPUT;
+    gpio.Mode = GPIO_MODE_IT_RISING;
     gpio.Pull = GPIO_PULLDOWN;
     HAL_GPIO_Init(GPIOA, &gpio);
 
     gpio.Pin = GPIO_PIN_14;
-    gpio.Mode = GPIO_MODE_INPUT;
     gpio.Pull = GPIO_PULLDOWN;
     HAL_GPIO_Init(GPIOC, &gpio);
+
+    HAL_NVIC_SetPriority(EXTI0_1_IRQn, 2U, 0U);
+    HAL_NVIC_EnableIRQ(EXTI0_1_IRQn);
+    HAL_NVIC_SetPriority(EXTI4_15_IRQn, 2U, 0U);
+    HAL_NVIC_EnableIRQ(EXTI4_15_IRQn);
 }
 
 static void MX_ADC_Init(void)
@@ -195,7 +206,9 @@ void SysTick_Handler(void)
 void Error_Handler(void)
 {
     __disable_irq();
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(MOTOR_UI_RELAY_GPIO_Port,
+                      MOTOR_UI_RELAY_Pin,
+                      MOTOR_POWER_CUT_RELAY_LEVEL);
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET);
     while (1) { }
 }

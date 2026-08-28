@@ -311,6 +311,37 @@ static void test_acs_window(void)
                                    &current_x100));
 }
 
+static void test_oled_defers_during_acs_window(void)
+{
+    size_t i;
+    uint16_t current_x100 = 0U;
+
+    adc_config_status = HAL_OK;
+    adc_start_status = HAL_OK;
+    adc_poll_status = HAL_OK;
+    adc_sample_count = ADC_DUMMY_CONVERSIONS + ACS_PP_SAMPLE_MIN;
+    adc_sample_index = 0U;
+    for (i = 0U; i < ADC_DUMMY_CONVERSIONS; ++i) adc_samples[i] = 2000U;
+    for (i = 0U; i < ACS_PP_SAMPLE_MIN; ++i) {
+        adc_samples[ADC_DUMMY_CONVERSIONS + i] = (i & 1U) ? 2500U : 1500U;
+    }
+
+    test_tick = 500U;
+    acs_pp_window_start(test_tick);
+    g_display_dirty = true;
+    /* A dirty OLED must wait; a page transfer may itself exceed 40 ms. */
+    assert(display_render_is_deferred());
+    for (i = 0U; i < ACS_PP_SAMPLE_MIN; ++i) {
+        acs_pp_window_task(test_tick + 1U);
+    }
+    assert(g_acs_pp_window.sample_count >= ACS_PP_SAMPLE_MIN);
+
+    acs_pp_window_task(test_tick + ACS_PP_WINDOW_MS);
+    assert(!display_render_is_deferred());
+    assert(acs_pp_window_consume(&current_x100));
+    assert(current_x100 == 285U);
+}
+
 static void test_irq_is_flag_only(void)
 {
     g_button_irq_hint = false;
@@ -389,6 +420,7 @@ int main(void)
     test_eeprom_recovery();
     test_eeprom_retry_and_safety();
     test_acs_window();
+    test_oled_defers_during_acs_window();
     test_irq_is_flag_only();
     test_i2c_irq_is_eeprom_flag_only();
     test_button_safety_paths();

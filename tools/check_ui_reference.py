@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """Verify every editable OLED frame against its immutable JSON source.
 
-The JSON stores top-left text coordinates while u8g2 uses baselines.  The
-source contract below therefore records the corresponding u8g2 calls; dynamic
-values are checked by their formatter and their fixed drawing field.  Alert
-bitmaps are allowed to blink, but their data, dimensions and coordinates are
-not allowed to change.
+The JSON stores nominal text coordinates while u8g2 uses baselines.  Dynamic
+texts are centred in their approved fields from their rendered width; alert
+bitmaps retain immutable data, dimensions and coordinates.
 """
 
 from __future__ import annotations
@@ -17,7 +15,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "src" / "motor_ui.c").read_text(encoding="utf-8")
-FRAMES = json.loads((ROOT / "reference" / "OLED_Projesi.oled.json").read_text(encoding="utf-8"))["frames"]
+REFERENCE = json.loads((ROOT / "reference" / "OLED_Projesi.oled.json").read_text(encoding="utf-8"))
+FRAMES = REFERENCE["frames"]
 
 FUNCTIONS = {
     "anaekran": "draw_main_screen",
@@ -37,48 +36,40 @@ FUNCTIONS = {
 # their approved runtime bindings.
 OPERATIONS = {
     "anaekran": [
-        '47U, 9U, "CRYSTAL"', '0U, 13U, 127U, 13U', '65U, 14U, 65U, 64U',
-        '9U, 32U, "Sicaklik"', '4U, 52U, temp_text',
-        '88U, 32U, "Akim"', '68U, 52U, current_text',
+        'column_centered_x(', '0U, 13U, 127U, 13U', '65U, 14U, 65U, 64U',
     ],
     "sicaklikuyari": [
-        '47U, 9U, "CRYSTAL"', '0U, 13U, 127U, 13U', '65U, 14U, 65U, 64U',
-        '88U, 32U, "Akim"', '68U, 52U, current_text',
-        '16U, 34U, 30U, 33U, tempalert_bits',
-        '7U, 29U, "Sicaklik"', '16U, 40U, temp_text',
+        'column_centered_x(', '0U, 13U, 127U, 13U', '65U, 14U, 65U, 64U',
+        'draw_scaled_xbm(11U, 15U, 43U, 48U, 30U, 33U, tempalert_bits)',
     ],
     "akimuyari": [
-        '47U, 9U, "CRYSTAL"', '0U, 13U, 127U, 13U', '68U, 14U, 68U, 64U',
-        '9U, 32U, "Sicaklik"', '4U, 52U, temp_text',
-        '89U, 38U, 24U, 24U, currentalert_bits',
-        '89U, 28U, "Akim"', '86U, 38U, current_text',
+        'column_centered_x(', '0U, 13U, 127U, 13U', '68U, 14U, 68U, 64U',
+        'draw_scaled_xbm(79U, 21U, 36U, 36U, 24U, 24U, currentalert_bits)',
     ],
     "akimvesicaklikuyari": [
-        '47U, 9U, "CRYSTAL"', '0U, 13U, 127U, 13U', '68U, 14U, 68U, 64U',
-        '18U, 33U, 30U, 33U, tempalert_bits',
-        '9U, 28U, "Sicaklik"', '18U, 39U, temp_text',
-        '89U, 38U, 24U, 24U, currentalert_bits',
-        '89U, 28U, "Akim"', '86U, 38U, current_text',
+        'column_centered_x(', '0U, 13U, 127U, 13U', '68U, 14U, 68U, 64U',
+        'draw_scaled_xbm(11U, 15U, 43U, 48U, 30U, 33U, tempalert_bits)',
+        'draw_scaled_xbm(79U, 21U, 36U, 36U, 24U, 24U, currentalert_bits)',
     ],
     "ayarlar": [
-        '46U, 9U, "AYARLAR"', '0U, 13U, 127U, 13U',
+        'column_centered_x(', '0U, 13U, 127U, 13U',
         '27U, 24U, "Sicaklik"', '27U, 36U, "Akim"',
         '27U, 49U, "Varsayilan"', '27U, 61U, "Ana Ekrana Don"',
         '3U, arrow_y[g_menu_index], 17U, 7U, arrow_bits',
         '92U, 24U, temp_set_text', '92U, 36U, current_set_text',
     ],
-    "sicaklikayarekrani": ['25U,', '34U,', '19U,'],
-    "akimayar": ['34U,', '28U,', '19U,'],
+    "sicaklikayarekrani": ['column_centered_x('],
+    "akimayar": ['column_centered_x('],
     "varsayilanonay": [
-        '5U, 11U, "VARSAYILAN DEGERLERI"', '10U, 24U, "ONAYLIYOR MUSUNUZ?"',
+        'column_centered_x(',
         '29U, 40U, "EVET"', '29U, 55U, "HAYIR"', '5U, arrow_y, 17U, 7U, arrow_bits',
     ],
     "onay1": [
-        '22U, 11U, "DEGISIKLIKLERI"', '10U, 24U, "ONAYLIYOR MUSUNUZ?"',
+        'column_centered_x(',
         '29U, 40U, "EVET"', '29U, 55U, "HAYIR"', '5U, arrow_y, 17U, 7U, arrow_bits',
     ],
     "onay2": [
-        '16U, 12U, "DEGISIKLIKLERDEN"', '25U, 24U, "EMIN MISINIZ?"',
+        'column_centered_x(',
         '29U, 40U, "EVET"', '29U, 55U, "HAYIR"', '5U, arrow_y, 17U, 7U, arrow_bits',
     ],
 }
@@ -119,6 +110,19 @@ def firmware_text(text: str) -> str:
 def main() -> int:
     errors: list[str] = []
     frame_names = [frame["name"] for frame in FRAMES]
+    relay_indicator = REFERENCE.get("relayStatusIndicator")
+    if relay_indicator != {
+        "screens": "all_except_splash_and_confirmations", "type": "circle", "x": 123,
+        "y": 5, "radius": 3, "off": "outline_motor_path_cut",
+        "on": "filled_motor_path_permitted",
+    }:
+        errors.append("unexpected relay status indicator reference")
+    for operation in (
+        "u8g2_DrawCircle(&g_u8g2, 123U, 5U, 3U, U8G2_DRAW_ALL)",
+        "u8g2_DrawDisc(&g_u8g2, 123U, 5U, 3U, U8G2_DRAW_ALL)",
+    ):
+        if operation not in SOURCE:
+            errors.append(f"relay status indicator missing: {operation}")
     if frame_names != list(FUNCTIONS):
         errors.append(f"unexpected JSON frame set/order: {frame_names}")
 

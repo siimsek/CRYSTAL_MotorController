@@ -232,8 +232,8 @@
 #define ACS_ADC_CHANNEL                             CURRENT_ADC_CHANNEL
 #define NTC_ADC_CHANNEL                             TEMPERATURE_ADC_CHANNEL
 
-/* 100k NTC varsayimi:
- * 3.3V --- 100k sabit direnc --- ADC --- 100k NTC --- GND
+/* 100k NTC varsayimi (mevcut hesaplama yonu):
+ * 3.3V --- 100k NTC --- ADC --- 100k sabit direnc --- GND
  * Baglanti yonu kart olcumu ile dogrulanmadan NTC_IS_CONNECTED_TO_GND
  * ters cevirilmemelidir.
  */

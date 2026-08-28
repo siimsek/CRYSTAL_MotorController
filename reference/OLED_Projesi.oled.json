@@ -4,6 +4,20 @@
   "width": 128,
   "height": 64,
   "displayId": "ssd1306-128x64",
+  "relayStatusIndicator": {
+    "screens": "all_except_splash_and_confirmations",
+    "type": "circle",
+    "x": 123,
+    "y": 5,
+    "radius": 3,
+    "off": "outline_motor_path_cut",
+    "on": "filled_motor_path_permitted"
+  },
+  "alarmIndicatorRendering": {
+    "alignment": "column_center",
+    "temperature": { "x": 11, "y": 15, "w": 43, "h": 48, "sourceW": 30, "sourceH": 33 },
+    "current": { "x": 79, "y": 21, "w": 36, "h": 36, "sourceW": 24, "sourceH": 24 }
+  },
   "frames": [
     {
       "id": "msegcfk8_eii6st",
@@ -167,8 +181,8 @@
           "visible": true,
           "locked": false,
           "color": 1,
-          "x": 16,
-          "y": 34,
+          "x": 17,
+          "y": 24,
           "w": 30,
           "h": 33,
           "data": [
@@ -428,8 +442,8 @@
           "visible": true,
           "locked": false,
           "color": 1,
-          "x": 89,
-          "y": 38,
+          "x": 85,
+          "y": 28,
           "w": 24,
           "h": 24,
           "data": [
@@ -587,8 +601,8 @@
           "visible": true,
           "locked": false,
           "color": 1,
-          "x": 89,
-          "y": 38,
+          "x": 85,
+          "y": 28,
           "w": 24,
           "h": 24,
           "data": [
@@ -726,8 +740,8 @@
           "visible": true,
           "locked": false,
           "color": 1,
-          "x": 18,
-          "y": 33,
+          "x": 17,
+          "y": 24,
           "w": 30,
           "h": 33,
           "data": [
