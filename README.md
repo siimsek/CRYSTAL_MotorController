@@ -1,10 +1,14 @@
-# CRYSTAL STM32 Motor Kontrol Bellenimi
+# CRYSTAL Motor Controller
 
-[![STM32F030](https://img.shields.io/badge/MCU-STM32F030C8T6-blue.svg)](https://www.st.com/)
-[![Display](https://img.shields.io/badge/Display-SSD1306_OLED-green.svg)](https://github.com/olikraus/u8g2)
-[![Build Status](https://img.shields.io/badge/Build-Passing-success.svg)]()
+[![MCU](https://img.shields.io/badge/MCU-STM32F030C8T6-03234B?logo=stmicroelectronics&logoColor=white)](https://www.st.com/)
+[![Language](https://img.shields.io/badge/Language-C-A8B9CC?logo=c&logoColor=white)](https://en.wikipedia.org/wiki/C_(programming_language))
+[![PlatformIO](https://img.shields.io/badge/PlatformIO-STM32_HAL-F5822A?logo=platformio&logoColor=white)](https://platformio.org/)
+[![License](https://img.shields.io/badge/License-Private%20%2F%20not%20granted-6B7280)](#license)
 
-Bu bellenim, **STM32F030C8T6** mikrodenetleyicisi üzerinde çalışan, endüstriyel elektrik motorları ve pompalar için tasarlanmış yüksek kararlılıklı kontrol ve koruma sistemidir. Akım ve sıcaklık parametrelerini gerçek zamanlı izler, tanımlanan eşiklerin aşılması durumunda röle çıkışını keserek donanımı emniyete alır.
+STM32F030C8T6 tabanlı, motor veya pompa güç yolunda kullanılan bir **seri güvenlik kesici** bellenimidir. Akım ve sıcaklığı izler; eşik aşımı ya da sensör arızasında röle bobinini keserek motor güç yolunu açar. Bu kart motor starter değildir; motorun ana çalışma mantığını başlatmaz veya yönetmez.
+
+> [!IMPORTANT]
+> Bu güvenlik-kritik bellenim yalnızca doğrulanmış donanım eşlemesi ve saha testiyle kullanılmalıdır. Röle, sensör kalibrasyonu veya eşik ayarları gerçek ekipman üzerinde doğrulanmadan üretim kullanımı için uygun kabul edilmemelidir.
 
 ---
 
@@ -189,3 +193,34 @@ bash tools/test_stage2_sim.sh
 # Tüm yerel host doğrulamaları (tek komut)
 bash tools/verify_host.sh
 ```
+
+
+---
+
+## 9. Proje Mimarisi
+
+```
+src/
+  main.c                 STM32 HAL başlatma ve ana görev döngüsü
+  motor_ui.c             Durum makinesi, ölçüm, alarm, röle ve OLED çizimi
+  u8g2_stm32_port.c      u8g2 I2C/HAL adaptörü
+include/
+  motor_ui.h             Kamu API
+  motor_ui_config.h      Pin, eşik, zamanlama ve güvenlik yapılandırması
+reference/
+  OLED_Projesi.oled.json Arayüzün değişmez kaynak doğrusu
+tests/                   Host tabanlı güvenlik ve ölçüm testleri
+tools/                   Aşama, arayüz kilidi ve doğrulama betikleri
+boards/                  Kartla ilişkili dosyalar
+PROJECT_STATUS.yaml      Doğrulanmış donanım bilgileri ve açık ölçümler
+build.sh                 Derleme yardımcısı
+flash.sh                 Doğrulama ve ST-Link yükleme yardımcısı
+```
+
+Akış: ADC örnekleme → `MotorUI_Task()` içindeki bloklamayan değerlendirme → alarm/röle durum makinesi → page-buffer u8g2 OLED çizimi. EXTI yalnız `MotorUI_ButtonIRQ()` çağrısını iletir; I2C, OLED çizimi ve EEPROM yazımı kesme içinde yapılmaz.
+
+---
+
+## License
+
+Bu özel depoda açık kaynak lisansı verilmemiştir. Tüm haklar saklıdır; kaynak kodun kopyalanması, dağıtılması veya yeniden kullanımı için yazılı izin gerekir. Dışa açık bir sürüm planlanırsa lisans, üçüncü taraf bağımlılıklar ve donanım/IP kapsamı birlikte gözden geçirilmelidir.
